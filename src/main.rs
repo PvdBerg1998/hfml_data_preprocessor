@@ -78,20 +78,30 @@ fn main() -> Result<()> {
     let mr_eval = mr_fit.eval::<1>(&x_interp)?;
     let full_eval = full_fit.eval::<1>(&x_interp)?;
 
-    store("raw.csv", x, y)?;
+    let x_inv = x.iter().map(|&x| 1.0 / x).collect::<Vec<_>>();
+    let x_interp_inv = x_interp.iter().map(|&x| 1.0 / x).collect::<Vec<_>>();
+    store("raw.csv", x_inv.iter(), y)?;
 
-    store("mr_fit.csv", x_interp.iter(), mr_eval.y.iter())?;
-    store("mr_residuals.csv", x, mr_fit.fit.residuals.iter())?;
+    store("mr_fit.csv", x_interp_inv.iter(), mr_eval.y.iter())?;
+    store(
+        "mr_residuals.csv",
+        x_inv.iter(),
+        mr_fit.fit.residuals.iter(),
+    )?;
     store(
         "mr_dv.csv",
-        x_interp.iter().skip(100),
+        x_interp_inv.iter().skip(100),
         mr_eval.dv_flat().iter().skip(100),
     )?;
-    store("full_fit.csv", x_interp.iter(), full_eval.y.iter())?;
-    store("full_residuals.csv", x, full_fit.fit.residuals.iter())?;
+    store("full_fit.csv", x_interp_inv.iter(), full_eval.y.iter())?;
+    store(
+        "full_residuals.csv",
+        x_inv.iter(),
+        full_fit.fit.residuals.iter(),
+    )?;
     store(
         "full_dv.csv",
-        x_interp.iter().skip(100),
+        x_interp_inv.iter().skip(100),
         full_eval.dv_flat().iter().skip(100),
     )?;
 
@@ -102,10 +112,10 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn store<'a>(
+fn store<'a, 'b>(
     to: &str,
     x: impl IntoIterator<Item = &'a f64>,
-    y: impl IntoIterator<Item = &'a f64>,
+    y: impl IntoIterator<Item = &'b f64>,
 ) -> Result<()> {
     let mut out = BufWriter::with_capacity(2usize.pow(16), std::fs::File::create(to)?);
     for (x, y) in x.into_iter().zip(y.into_iter()) {
