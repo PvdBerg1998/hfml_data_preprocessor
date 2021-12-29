@@ -5,6 +5,13 @@ set multiplot layout 3,1
 
 set xrange [5:33]
 
-plot 'out_interp.csv' using 1:2 with lines, 'out.csv' using 1:2 with lines
-plot 'out_dv1.csv' using 1:2 with lines, 'out_dv2.csv' using 1:2 with lines axes x1y2
-plot 'out_residuals.csv' using 1:2 with lines
+plot 'raw.csv' using 1:2 with lines, 'full_fit.csv' using 1:2 with lines axes x1y1
+plot 'mr_dv.csv' using 1:2 with lines, 'full_dv.csv' using 1:2 with lines axes x1y1
+plot 'mr_residuals.csv' using 1:2 with lines, 'full_residuals.csv' using 1:2 with lines axes x1y1
+
+unset multiplot
+set terminal png size 7680,4320
+set output 'detail.png'
+plot 'raw.csv' using 1:2 with points,\
+'full_fit.csv' using 1:2 with lines,\
+'mr_fit.csv' using 1:2 with lines axes x1y1

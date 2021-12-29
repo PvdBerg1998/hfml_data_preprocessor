@@ -50,37 +50,49 @@ fn main() -> Result<()> {
     let a = x[0];
     let b = x[x.len() - 1];
 
-    let mut nbreak = std::env::args().nth(1).unwrap().parse::<f64>().unwrap();
-    if nbreak <= 1.0 {
+    let mut mr_nbreak = std::env::args().nth(1).unwrap().parse::<f64>().unwrap();
+    if mr_nbreak <= 1.0 {
         // interpret as fraction
-        nbreak *= x.len() as f64;
+        mr_nbreak *= x.len() as f64;
     }
-    let nbreak = nbreak.floor() as usize;
-    dbg!(nbreak);
-    println!("Fitting DoF: {}", nbreak * nbreak);
+    let mr_nbreak = mr_nbreak.floor() as usize;
+    dbg!(mr_nbreak);
+    println!("MR Fitting DoF: {}", mr_nbreak * mr_nbreak);
 
-    let fit = gsl_rust::bspline::BSpline::fit(5, a, b, nbreak, x, y)?;
-    dbg!(&fit.fit.r_squared);
+    let mut full_nbreak = std::env::args().nth(2).unwrap().parse::<f64>().unwrap();
+    if full_nbreak <= 1.0 {
+        // interpret as fraction
+        full_nbreak *= x.len() as f64;
+    }
+    let full_nbreak = full_nbreak.floor() as usize;
+    dbg!(full_nbreak);
+    println!("Full Fitting DoF: {}", full_nbreak * full_nbreak);
+
+    let mr_fit = gsl_rust::bspline::BSpline::fit(4, a, b, mr_nbreak, x, y)?;
+    let full_fit = gsl_rust::bspline::BSpline::fit(4, a, b, full_nbreak, x, y)?;
 
     let n = 10_000;
     let delta = (b - a) / n as f64;
     let x_interp = (0..n).map(|i| i as f64 * delta + a).collect::<Box<[f64]>>();
-    let eval = fit.eval::<2>(&x_interp)?;
-    let y_interp = &eval.y;
-    let y_interp_dv = eval.dv;
 
-    store("out.csv", x, y)?;
-    store("out_interp.csv", x_interp.iter(), y_interp.iter())?;
-    store("out_residuals.csv", x, fit.fit.residuals.iter())?;
+    let mr_eval = mr_fit.eval::<1>(&x_interp)?;
+    let full_eval = full_fit.eval::<1>(&x_interp)?;
+
+    store("raw.csv", x, y)?;
+
+    store("mr_fit.csv", x_interp.iter(), mr_eval.y.iter())?;
+    store("mr_residuals.csv", x, mr_fit.fit.residuals.iter())?;
     store(
-        "out_dv1.csv",
+        "mr_dv.csv",
         x_interp.iter().skip(100),
-        y_interp_dv.iter().skip(100).map(|dvs| &dvs[0]),
+        mr_eval.dv_flat().iter().skip(100),
     )?;
+    store("full_fit.csv", x_interp.iter(), full_eval.y.iter())?;
+    store("full_residuals.csv", x, full_fit.fit.residuals.iter())?;
     store(
-        "out_dv2.csv",
+        "full_dv.csv",
         x_interp.iter().skip(100),
-        y_interp_dv.iter().skip(100).map(|dvs| &dvs[1]),
+        full_eval.dv_flat().iter().skip(100),
     )?;
 
     std::process::Command::new("gnuplot")
