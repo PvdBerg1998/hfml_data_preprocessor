@@ -50,8 +50,12 @@ fn main() -> Result<()> {
     let a = x[0];
     let b = x[x.len() - 1];
 
-    let nbreak = (x.len() as f64 * std::env::args().nth(1).unwrap().parse::<f64>().unwrap()).floor()
-        as usize;
+    let mut nbreak = std::env::args().nth(1).unwrap().parse::<f64>().unwrap();
+    if nbreak <= 1.0 {
+        // interpret as fraction
+        nbreak *= x.len() as f64;
+    }
+    let nbreak = nbreak.floor() as usize;
     dbg!(nbreak);
     println!("Fitting DoF: {}", nbreak * nbreak);
 
@@ -69,7 +73,12 @@ fn main() -> Result<()> {
     store("out_interp.csv", x_interp.iter(), y_interp.iter())?;
     store("out_residuals.csv", x, fit.fit.residuals.iter())?;
     store(
-        "out_dv.csv",
+        "out_dv1.csv",
+        x_interp.iter().skip(100),
+        y_interp_dv.iter().skip(100).map(|dvs| &dvs[0]),
+    )?;
+    store(
+        "out_dv2.csv",
         x_interp.iter().skip(100),
         y_interp_dv.iter().skip(100).map(|dvs| &dvs[1]),
     )?;
