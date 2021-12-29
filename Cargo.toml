@@ -1,0 +1,10 @@
+[package]
+name = "quantum_oscillations"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.52"
+float-ord = "0.3.2"
+gsl_rust = { version = "*", path = "../gsl_rust" }
+permutation = "0.2.5"
