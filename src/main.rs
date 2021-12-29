@@ -70,7 +70,7 @@ fn main() -> Result<()> {
     store("out_residuals.csv", x, fit.fit.residuals.iter())?;
     store(
         "out_dv.csv",
-        x.iter().skip(100),
+        x_interp.iter().skip(100),
         y_interp_dv.iter().skip(100).map(|dvs| &dvs[1]),
     )?;
 
