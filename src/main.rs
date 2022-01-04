@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
+use num_complex::Complex64;
 use std::io::{BufWriter, Write};
 
 fn main() -> Result<()> {
@@ -21,7 +22,7 @@ fn main() -> Result<()> {
     dbg!(p);
 
     let key = bincode::serialize::<(usize, usize, usize)>(&(n, l, p)).unwrap();
-    let value = bincode::deserialize::<Vec<f64>>(
+    let coeff = bincode::deserialize::<Vec<f64>>(
         &db.get(&key)?
             .ok_or_else(|| anyhow::anyhow!("value does not exist in database"))?,
     )?;
@@ -29,12 +30,34 @@ fn main() -> Result<()> {
     let x = (-(l as isize)..l as isize)
         .map(|x| x as f64)
         .collect::<Vec<f64>>();
-    let y = value;
-
+    let y = &coeff;
     store("maxpol_coeff.csv", x.iter(), y.iter())?;
+
+    let x = (0..1000)
+        .map(|x| x as f64 / 1000.0 * std::f64::consts::PI)
+        .collect::<Vec<f64>>();
+    let y = x
+        .iter()
+        .map(|&w| {
+            coeff
+                .iter()
+                .enumerate()
+                .map(|(i, c)| c * (Complex64::i() * (i + 1) as f64 * w).exp())
+                .sum::<Complex64>()
+                .norm()
+        })
+        .collect::<Vec<f64>>();
+    store("maxpol_spectrum.csv", x.iter(), y.iter())?;
+
+    let y = x.iter().map(|&w| w.powi(n as i32)).collect::<Vec<f64>>();
+    store("dv_spectrum.csv", x.iter(), y.iter())?;
 
     std::process::Command::new("gnuplot")
         .arg("plot_maxpol_coeff.gp")
+        .spawn()?;
+
+    std::process::Command::new("gnuplot")
+        .arg("plot_maxpol_spectrum.gp")
         .spawn()?;
 
     Ok(())

@@ -1,5 +1,5 @@
 set terminal png size 1280,720
-set datafile separator ","
+set datafile separator ','
 set output 'maxpol_coeff.png'
 
 set key off

@@ -1,5 +1,5 @@
 set terminal png size 1920,1080
-set datafile separator ","
+set datafile separator ','
 set output 'out.png'
 set multiplot layout 3,1
 
