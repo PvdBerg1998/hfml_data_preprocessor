@@ -4,6 +4,43 @@ use anyhow::Result;
 use std::io::{BufWriter, Write};
 
 fn main() -> Result<()> {
+    let db = sled::Config::default()
+        .path("maxpol_coefficients")
+        .use_compression(true)
+        .mode(sled::Mode::LowSpace)
+        .open()?;
+
+    let n = std::env::args().nth(1).unwrap().parse::<usize>().unwrap();
+    let l = std::env::args().nth(2).unwrap().parse::<usize>().unwrap();
+    let filter_factor = std::env::args().nth(3).unwrap().parse::<f64>().unwrap();
+
+    let p = (((1.0 - filter_factor) * 2.0 * l as f64).round() as usize)
+        .max(n)
+        .min(2 * l);
+
+    dbg!(p);
+
+    let key = bincode::serialize::<(usize, usize, usize)>(&(n, l, p)).unwrap();
+    let value = bincode::deserialize::<Vec<f64>>(
+        &db.get(&key)?
+            .ok_or_else(|| anyhow::anyhow!("value does not exist in database"))?,
+    )?;
+
+    let x = (-(l as isize)..l as isize)
+        .map(|x| x as f64)
+        .collect::<Vec<f64>>();
+    let y = value;
+
+    store("maxpol_coeff.csv", x.iter(), y.iter())?;
+
+    std::process::Command::new("gnuplot")
+        .arg("plot_maxpol_coeff.gp")
+        .spawn()?;
+
+    Ok(())
+}
+
+fn _main() -> Result<()> {
     //disable_error_handler();
 
     let file = std::fs::read_to_string("file.002.dat")?;
