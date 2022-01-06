@@ -179,7 +179,7 @@ fn store<'a, 'b>(
 ) -> Result<()> {
     let mut out = BufWriter::with_capacity(2usize.pow(16), std::fs::File::create(to)?);
     for (x, y) in x.into_iter().zip(y.into_iter()) {
-        writeln!(&mut out, "{},{}", x, y)?;
+        writeln!(&mut out, "{:.4},{:.4}", x, y)?;
     }
     Ok(())
 }
