@@ -1,10 +1,28 @@
-use std::collections::HashMap;
+mod parsing;
 
 use anyhow::Result;
 use num_complex::Complex64;
+use parsing::*;
+use std::collections::HashMap;
 use std::io::{BufWriter, Write};
 
 fn main() -> Result<()> {
+    let mut data: Data = std::fs::read_to_string("file.073.dat")?.parse()?;
+    println!("{}", &data);
+
+    dbg!(data.columns());
+
+    data.rename_column("B(T)", "B");
+    data.rename_column("V_68_x", "Vxx");
+
+    dbg!(data.columns());
+
+    let xy = data.xy("B", "Vxx").to_monotonic();
+
+    Ok(())
+}
+
+fn _main() -> Result<()> {
     let db = sled::Config::default()
         .path("maxpol_coefficients")
         .use_compression(true)
@@ -63,7 +81,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn _main() -> Result<()> {
+fn __main() -> Result<()> {
     //disable_error_handler();
 
     let file = std::fs::read_to_string("file.002.dat")?;
