@@ -39,18 +39,21 @@ impl FromStr for Data {
 
 impl fmt::Display for Data {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut s = f.debug_map();
-        for (k, v) in &self.data {
-            s.entry(
+        writeln!(f, "Data: {{")?;
+        for (k, v) in self
+            .columns()
+            .iter()
+            .map(|&column| (column, &self.data[column]))
+        {
+            writeln!(
+                f,
+                "   {}: {:?},... ({} values)",
                 k,
-                &format!(
-                    "{:?},... ({} values)",
-                    v.iter().take(3).collect::<Vec<_>>(),
-                    v.len()
-                ),
-            );
+                v.iter().take(3).collect::<Vec<_>>(),
+                v.len()
+            )?;
         }
-        s.finish()?;
+        writeln!(f, "}}")?;
         Ok(())
     }
 }

@@ -7,6 +7,7 @@ edition = "2021"
 anyhow = "1.0.52"
 float-ord = "0.3.2"
 gsl_rust = { version = "*", path = "../gsl_rust" }
+convolve = { version = "*", path = "../convolve" }
 permutation = "0.2.5"
 bincode = "1.3.3"
 sled = { version = "0.34.7", features = ["compression"] }

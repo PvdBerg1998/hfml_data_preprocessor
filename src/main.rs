@@ -1,85 +1,82 @@
+mod maxpol;
 mod parsing;
 
 use anyhow::Result;
-use num_complex::Complex64;
+use convolve::convolve_scalar;
 use parsing::*;
-use std::collections::HashMap;
 use std::io::{BufWriter, Write};
 
 fn main() -> Result<()> {
-    let mut data: Data = std::fs::read_to_string("file.073.dat")?.parse()?;
+    let mut data: Data = std::fs::read_to_string("file.013.dat")?.parse()?;
     println!("{}", &data);
 
     dbg!(data.columns());
 
+    data.rename_column("Field", "B");
     data.rename_column("B(T)", "B");
     data.rename_column("V_68_x", "Vxx");
 
     dbg!(data.columns());
 
-    let xy = data.xy("B", "Vxx").to_monotonic();
+    let xy = data.xy("B", "S2_Vxy_5_19_x").to_monotonic();
 
-    Ok(())
-}
+    dbg!(&xy.y()[0..3]);
 
-fn _main() -> Result<()> {
-    let db = sled::Config::default()
-        .path("maxpol_coefficients")
-        .use_compression(true)
-        .mode(sled::Mode::LowSpace)
-        .open()?;
+    // NB. Apparently the database is not cross platform. Todo: bug report
+    let db = maxpol::db()?;
+    let kernel = maxpol::load_kernel(&db, 0, 6, 0.5)?;
 
-    let n = std::env::args().nth(1).unwrap().parse::<usize>().unwrap();
-    let l = std::env::args().nth(2).unwrap().parse::<usize>().unwrap();
-    let filter_factor = std::env::args().nth(3).unwrap().parse::<f64>().unwrap();
+    dbg!(&kernel);
 
-    let p = (((1.0 - filter_factor) * 2.0 * l as f64).round() as usize)
-        .max(n)
-        .min(2 * l);
+    let out = convolve_scalar(&kernel, xy.y());
 
-    dbg!(p);
-
-    let key = bincode::serialize::<(usize, usize, usize)>(&(n, l, p)).unwrap();
-    let coeff = bincode::deserialize::<Vec<f64>>(
-        &db.get(&key)?
-            .ok_or_else(|| anyhow::anyhow!("value does not exist in database"))?,
-    )?;
-
-    let x = (-(l as isize)..l as isize)
-        .map(|x| x as f64)
-        .collect::<Vec<f64>>();
-    let y = &coeff;
-    store("maxpol_coeff.csv", x.iter(), y.iter())?;
-
-    let x = (0..1000)
-        .map(|x| x as f64 / 1000.0 * std::f64::consts::PI)
-        .collect::<Vec<f64>>();
-    let y = x
-        .iter()
-        .map(|&w| {
-            coeff
-                .iter()
-                .enumerate()
-                .map(|(i, c)| c * (Complex64::i() * (i + 1) as f64 * w).exp())
-                .sum::<Complex64>()
-                .norm()
-        })
-        .collect::<Vec<f64>>();
-    store("maxpol_spectrum.csv", x.iter(), y.iter())?;
-
-    let y = x.iter().map(|&w| w.powi(n as i32)).collect::<Vec<f64>>();
-    store("dv_spectrum.csv", x.iter(), y.iter())?;
+    store("Vxy.csv", xy.x(), xy.y())?;
+    store("processed.csv", xy.x(), &out)?;
 
     std::process::Command::new("gnuplot")
-        .arg("plot_maxpol_coeff.gp")
-        .spawn()?;
-
-    std::process::Command::new("gnuplot")
-        .arg("plot_maxpol_spectrum.gp")
+        .arg("plot2.gp")
         .spawn()?;
 
     Ok(())
 }
+/*
+// fn _main() -> Result<()> {
+
+//     let x = (-(l as isize)..l as isize)
+//         .map(|x| x as f64)
+//         .collect::<Vec<f64>>();
+//     let y = &coeff;
+//     store("maxpol_coeff.csv", x.iter(), y.iter())?;
+
+//     let x = (0..1000)
+//         .map(|x| x as f64 / 1000.0 * std::f64::consts::PI)
+//         .collect::<Vec<f64>>();
+//     let y = x
+//         .iter()
+//         .map(|&w| {
+//             coeff
+//                 .iter()
+//                 .enumerate()
+//                 .map(|(i, c)| c * (Complex64::i() * (i + 1) as f64 * w).exp())
+//                 .sum::<Complex64>()
+//                 .norm()
+//         })
+//         .collect::<Vec<f64>>();
+//     store("maxpol_spectrum.csv", x.iter(), y.iter())?;
+
+//     let y = x.iter().map(|&w| w.powi(n as i32)).collect::<Vec<f64>>();
+//     store("dv_spectrum.csv", x.iter(), y.iter())?;
+
+//     std::process::Command::new("gnuplot")
+//         .arg("plot_maxpol_coeff.gp")
+//         .spawn()?;
+
+//     std::process::Command::new("gnuplot")
+//         .arg("plot_maxpol_spectrum.gp")
+//         .spawn()?;
+
+//     Ok(())
+// }
 
 fn __main() -> Result<()> {
     //disable_error_handler();
@@ -189,15 +186,12 @@ fn __main() -> Result<()> {
 
     Ok(())
 }
+*/
 
-fn store<'a, 'b>(
-    to: &str,
-    x: impl IntoIterator<Item = &'a f64>,
-    y: impl IntoIterator<Item = &'b f64>,
-) -> Result<()> {
+fn store<'a, 'b>(to: &str, x: &[f64], y: &[f64]) -> Result<()> {
     let mut out = BufWriter::with_capacity(2usize.pow(16), std::fs::File::create(to)?);
-    for (x, y) in x.into_iter().zip(y.into_iter()) {
-        writeln!(&mut out, "{:.4},{:.4}", x, y)?;
+    for (x, y) in x.iter().zip(y.iter()) {
+        writeln!(&mut out, "{},{}", x, y)?;
     }
     Ok(())
 }
