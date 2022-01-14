@@ -14,12 +14,16 @@ pub fn load_kernel(db: &sled::Db, n: usize, l: usize, filter_factor: f64) -> Res
         .max(n)
         .min(2 * l);
 
-    dbg!(p);
-
     let key = bincode::serialize::<(usize, usize, usize)>(&(n, l, p)).unwrap();
     let coeff = bincode::deserialize::<Vec<f64>>(
         &db.get(&key)?
             .ok_or_else(|| anyhow::anyhow!("value does not exist in database"))?,
     )?;
     Ok(coeff.into_boxed_slice())
+}
+
+pub fn load_raw(s: &str) -> Box<[f64]> {
+    s.lines()
+        .map(|line| fast_float::parse(line).expect("parse error"))
+        .collect()
 }
