@@ -1,5 +1,5 @@
 [package]
-name = "quantum_oscillations"
+name = "hfml_data_preprocessor"
 version = "0.1.0"
 edition = "2021"
 
