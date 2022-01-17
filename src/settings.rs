@@ -20,6 +20,7 @@ use anyhow::anyhow;
 use anyhow::Result;
 use num_traits::one;
 use serde::Deserialize;
+use std::fmt;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -124,6 +125,15 @@ pub struct Interpolation {
 pub enum Algorithm {
     Linear,
     Steffen,
+}
+
+impl fmt::Display for Algorithm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Algorithm::Linear => write!(f, "linear"),
+            Algorithm::Steffen => write!(f, "Steffen spline"),
+        }
+    }
 }
 
 impl Default for Algorithm {

@@ -141,19 +141,19 @@ fn process_pair(name: &str, xy: &HashMap<String, String>, data: &Data) -> Result
 
     let x = xy
         .get("x")
-        .ok_or_else(|| anyhow!("Missing x column specification for dataset {name}"))?;
+        .ok_or_else(|| anyhow!("Missing x column specification for dataset '{name}'"))?;
     let y = xy
         .get("y")
-        .ok_or_else(|| anyhow!("Missing y column specification for dataset {name}"))?;
+        .ok_or_else(|| anyhow!("Missing y column specification for dataset '{name}'"))?;
 
     if !data.contains(&*x) {
-        bail!("specified x column {x} for dataset {name} does not exist");
+        bail!("specified x column '{x}' for dataset '{name}' does not exist");
     }
     if !data.contains(&*y) {
-        bail!("specified y column {y} for dataset {name} does not exist");
+        bail!("specified y column '{y}' for dataset '{name}' does not exist");
     }
 
-    info!("Extracting dataset {name} (x={x}, y={y})");
+    info!("Extracting dataset '{name}' (x='{x}', y='{y}')");
     let mut xy = data.xy(&*x, &*y);
 
     // Premultiplication
@@ -200,14 +200,14 @@ fn process_pair(name: &str, xy: &HashMap<String, String>, data: &Data) -> Result
     let domain = [xy.min_x(), xy.max_x()];
     if trim[0] < domain[0] {
         bail!(
-            "Left trim {} is outside domain {:?} for dataset {name}",
+            "Left trim {} is outside domain {:?} for dataset '{name}'",
             trim[0],
             domain
         );
     }
     if trim[1] > domain[1] {
         bail!(
-            "Right trim {} is outside domain {:?} for dataset {name}",
+            "Right trim {} is outside domain {:?} for dataset '{name}'",
             trim[1],
             domain
         );
@@ -265,7 +265,7 @@ fn process_pair(name: &str, xy: &HashMap<String, String>, data: &Data) -> Result
         };
 
         info!(
-            "Interpolating to 2^{} points using {:?} interpolation",
+            "Interpolating to 2^{} points using {} interpolation",
             interp_log2, algorithm
         );
 
@@ -308,8 +308,9 @@ fn process_pair(name: &str, xy: &HashMap<String, String>, data: &Data) -> Result
     }
 
     // Output
-    let csv_path = format!("output/raw_{name}.csv");
-    let png_path = format!("output/raw_{name}.png");
+    let sanitized_name = name.replace(' ', "_");
+    let csv_path = format!("output/raw_{sanitized_name}.csv");
+    let png_path = format!("output/raw_{sanitized_name}.png");
     let _ = std::fs::create_dir("output");
 
     debug!("Storing data to {csv_path}");
