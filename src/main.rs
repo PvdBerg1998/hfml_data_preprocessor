@@ -18,17 +18,17 @@
 */
 
 //mod maxpol;
+mod data;
 mod output;
-mod parsing;
 mod settings;
 
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Result;
+use data::Data;
 use gsl_rust::interpolation::interpolate_monotonic;
 use log::*;
 use once_cell::sync::OnceCell;
-use parsing::Data;
 use rayon::prelude::*;
 use settings::Interpolation;
 use simplelog::*;
