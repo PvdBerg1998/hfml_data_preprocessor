@@ -69,6 +69,10 @@ impl Data {
         c.into_boxed_slice()
     }
 
+    pub fn contains(&self, name: &str) -> bool {
+        self.data.contains_key(name)
+    }
+
     /// ### Panics
     /// - When no column with given name exists.
     pub fn column(&self, name: &str) -> &[f64] {
@@ -88,25 +92,27 @@ impl Data {
         }
     }
 
-    /// Gets an x/y data pair.
+    /// Clones an x/y data pair.
     /// ### Panics
     /// - When columns do not exist
     /// - When columns do not have the same length
     /// - When columns are empty
-    pub fn xy(&self, x: &str, y: &str) -> XY<'_> {
+    pub fn xy(&self, x: &str, y: &str) -> XY {
         let x = self.column(x);
         let y = self.column(y);
         assert_eq!(x.len(), y.len(), "XY columns have a different length");
-        assert!(x.len() > 0, "XY columns are empty");
-
-        XY { x, y }
+        assert!(!x.is_empty(), "XY columns are empty");
+        XY {
+            x: x.to_vec(),
+            y: y.to_vec(),
+        }
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct XY<'a> {
-    x: &'a [f64],
-    y: &'a [f64],
+#[derive(Clone, Debug, PartialEq)]
+pub struct XY {
+    x: Vec<f64>,
+    y: Vec<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -115,7 +121,7 @@ pub struct MonotonicXY {
     y: Vec<f64>,
 }
 
-impl<'a> XY<'a> {
+impl XY {
     pub fn len(&self) -> usize {
         self.x.len()
     }
@@ -124,8 +130,26 @@ impl<'a> XY<'a> {
         self.x.iter().all(|x| x.is_finite()) && self.y.iter().all(|y| y.is_finite())
     }
 
+    pub fn multiply_x(&mut self, v: f64) {
+        self.x.iter_mut().for_each(|x| {
+            *x *= v;
+        });
+    }
+
+    pub fn multiply_y(&mut self, v: f64) {
+        self.y.iter_mut().for_each(|y| {
+            *y *= v;
+        });
+    }
+
+    pub fn invert_x(&mut self) {
+        self.x.iter_mut().for_each(|x| {
+            *x = 1.0 / *x;
+        });
+    }
+
     pub fn to_monotonic(&self) -> MonotonicXY {
-        let XY { x, y } = *self;
+        let XY { x, y } = self;
 
         // Sort
         let perm = permutation::sort_by_key(x.as_ref(), |x| float_ord::FloatOrd(*x));

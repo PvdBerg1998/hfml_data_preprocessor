@@ -2,3 +2,5 @@
 file.*
 *.png
 *.csv
+/log
+/output

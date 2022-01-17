@@ -1,15 +1,21 @@
 [package]
+edition = "2021"
 name = "hfml_data_preprocessor"
 version = "0.1.0"
-edition = "2021"
 
 [dependencies]
 anyhow = "1.0.52"
 float-ord = "0.3.2"
-gsl_rust = { version = "*", path = "../gsl_rust" }
-convolve = { version = "*", path = "../convolve" }
-permutation = "0.2.5"
+gsl_rust = {version = "*", path = "../gsl_rust"}
+#convolve = { version = "*", path = "../convolve" }
 bincode = "1.3.3"
-sled = { version = "0.34.7", features = ["compression"] }
-num-complex = "0.4"
+permutation = "0.2.5"
+#sled = { version = "0.34.7", features = ["compression"] }
 fast-float = "0.2.0"
+num-complex = "0.4"
+num-traits = "0.2"
+serde = {version = "1.0", features = ["derive"]}
+toml = "0.5.8"
+log = "0.4.14"
+simplelog = "0.11.2"
+once_cell = "1.9.0"
