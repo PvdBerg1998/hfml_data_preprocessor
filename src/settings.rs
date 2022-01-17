@@ -17,7 +17,6 @@ pub struct Settings {
     pub project: Project,
     pub rename: Rename,
     pub extract: Extract,
-    #[serde(default)]
     pub preprocessing: Preprocessing,
     pub processing: Option<Processing>,
 }
@@ -32,6 +31,7 @@ impl Settings {
 pub struct Project {
     pub title: String,
     pub files: Vec<String>,
+    pub threading: bool,
 }
 
 impl Project {
@@ -83,14 +83,44 @@ pub struct Extract {
     pub pairs: HashMap<String, HashMap<String, String>>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct Preprocessing {
     #[serde(default)]
     pub prefactor: Prefactor,
     #[serde(default)]
     pub invert_x: bool,
+    pub interpolation: Option<Interpolation>,
+    pub trim_left: f64,
+    pub trim_right: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct Interpolation {
+    pub n: String,
     #[serde(default)]
-    pub interpolation_log2: u16,
+    pub algorithm: Algorithm,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Algorithm {
+    Linear,
+    Steffen,
+}
+
+impl Default for Algorithm {
+    fn default() -> Self {
+        Algorithm::Linear
+    }
+}
+
+impl Into<gsl_rust::interpolation::Algorithm> for Algorithm {
+    fn into(self) -> gsl_rust::interpolation::Algorithm {
+        match self {
+            Algorithm::Linear => gsl_rust::interpolation::Algorithm::Linear,
+            Algorithm::Steffen => gsl_rust::interpolation::Algorithm::Steffen,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -107,22 +137,22 @@ impl Default for Prefactor {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ProcessingKind {
-    FFT,
-    Symmetrize,
-}
-
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct Processing {
     pub kind: Option<ProcessingKind>,
     pub fft: Option<FFT>,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProcessingKind {
+    Fft,
+    Symmetrize,
+}
+
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct FFT {
-    pub zero_pad_log2: u16,
+    pub zero_pad_log2: u32,
     pub cuda: bool,
     pub center: bool,
 }

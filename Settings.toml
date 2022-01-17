@@ -1,5 +1,6 @@
 [project]
 files = ["13"] # Ranges and raw filenames are allowed
+threading = false
 title = "Test"
 
 [rename]
@@ -17,10 +18,17 @@ x = "B"
 y = "Vxy"
 
 [preprocessing]
-interpolation_log2 = 3
-invert_x = false
-prefactor.x = 1
-prefactor.y = 1
+invert_x = true
+trim_left = 4
+trim_right = 32.95
+
+[preprocessing.interpolation]
+algorithm = "linear"
+n = "min"
+
+[preprocessing.prefactor]
+x = 1
+y = 1
 
 [processing]
 kind = "fft"

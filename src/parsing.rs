@@ -1,3 +1,4 @@
+use gsl_rust::sorting;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::fmt;
@@ -117,8 +118,8 @@ pub struct XY {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MonotonicXY {
-    x: Vec<f64>,
-    y: Vec<f64>,
+    x: Box<[f64]>,
+    y: Box<[f64]>,
 }
 
 impl XY {
@@ -148,13 +149,13 @@ impl XY {
         });
     }
 
-    pub fn to_monotonic(&self) -> MonotonicXY {
-        let XY { x, y } = self;
+    pub fn into_monotonic(self) -> MonotonicXY {
+        let XY { mut x, mut y } = self;
 
-        // Sort
-        let perm = permutation::sort_by_key(x.as_ref(), |x| float_ord::FloatOrd(*x));
-        let x = perm.apply_slice(x.as_ref());
-        let y = perm.apply_slice(y.as_ref());
+        sorting::sort_xy(&mut x, &mut y);
+
+        // Safe to unwrap as this only returns Err when the lengths are not equal
+        let (x, y) = sorting::dedup_x_mean(&x, &y).unwrap();
 
         MonotonicXY { x, y }
     }
@@ -185,27 +186,20 @@ impl MonotonicXY {
         &self.y
     }
 
-    pub fn y_mut(&mut self) -> &mut [f64] {
-        &mut self.y
+    pub fn xy(&self) -> (&[f64], &[f64]) {
+        (&self.x, &self.y)
     }
 
-    pub fn xy_mut(&mut self) -> (&[f64], &mut [f64]) {
-        (&self.x, &mut self.y)
-    }
-
-    /// Returns a new MonotonicXY, truncated to x values given.
+    /// Returns a slice, truncated to x values given.
     /// ### Panics
     /// - When a boundary is higher than the largest x value in the data
-    pub fn trim(&mut self, lower_x: f64, upper_x: f64) -> Self {
+    pub fn trimmed_xy(&self, lower_x: f64, upper_x: f64) -> (&[f64], &[f64]) {
         let lower = self.x.iter().position(|&b| b >= lower_x).unwrap();
         let upper = self.x.iter().position(|&b| b >= upper_x).unwrap();
 
         let x = &self.x[lower..upper];
         let y = &self.y[lower..upper];
 
-        MonotonicXY {
-            x: x.to_vec(),
-            y: y.to_vec(),
-        }
+        (x, y)
     }
 }
