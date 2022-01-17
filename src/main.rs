@@ -11,6 +11,7 @@ use log::*;
 use once_cell::sync::OnceCell;
 use parsing::Data;
 use rayon::prelude::*;
+use settings::Interpolation;
 use simplelog::*;
 use std::collections::HashMap;
 use std::{
@@ -20,7 +21,8 @@ use std::{
 use sysinfo::RefreshKind;
 use sysinfo::SystemExt;
 
-use crate::settings::Interpolation;
+// todo: derivative, processing
+// https://www.gnu.org/software/gsl/doc/html/interp.html#c.gsl_interp_eval_deriv_e
 
 static SETTINGS: OnceCell<settings::Settings> = OnceCell::new();
 
