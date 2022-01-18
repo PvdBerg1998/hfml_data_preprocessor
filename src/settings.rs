@@ -182,4 +182,8 @@ pub struct FFT {
     pub zero_pad: String,
     pub cuda: bool,
     pub center: bool,
+    #[serde(default)]
+    pub hann: bool,
+    pub truncate_lower: Option<f64>,
+    pub truncate_upper: Option<f64>,
 }

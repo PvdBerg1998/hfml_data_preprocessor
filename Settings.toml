@@ -1,12 +1,14 @@
 [project]
-files = ["13"] # Ranges and raw filenames are allowed
+files = ["74"]
 threading = true
 
 [rename]
 "B(T)" = "B"
-Field = "B"
+"Field" = "B"
 "S1_Vxx_8_13_x" = "Vxx"
 "S1_Vxy_9_13_x" = "Vxy"
+"V_37_x" = "Vxy"
+"V_68_x" = "Vxx"
 
 [extract.Vxx]
 x = "B"
@@ -19,10 +21,10 @@ y = "Vxy"
 [preprocessing]
 invert_x = true
 trim_left = 4
-trim_right = 32.95
+trim_right = 15.95
 
 [preprocessing.interpolation]
-algorithm = "linear"
+algorithm = "steffen"
 n = "min"
 
 [preprocessing.prefactor]
@@ -34,5 +36,8 @@ kind = "fft"
 
 [processing.fft]
 center = true
-cuda = true
-zero_pad = "2^10"
+cuda = false
+hann = true
+truncate_lower = 100
+truncate_upper = 600
+zero_pad = "2^22"
