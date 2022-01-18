@@ -48,7 +48,6 @@ impl Settings {
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct Project {
-    pub title: String,
     pub files: Vec<String>,
     pub threading: bool,
 }
@@ -167,7 +166,7 @@ impl Default for Prefactor {
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct Processing {
-    pub kind: Option<ProcessingKind>,
+    pub kind: ProcessingKind,
     pub fft: Option<FFT>,
 }
 
@@ -180,7 +179,7 @@ pub enum ProcessingKind {
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct FFT {
-    pub zero_pad_log2: u32,
+    pub zero_pad: String,
     pub cuda: bool,
     pub center: bool,
 }

@@ -142,12 +142,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "core-foundation-sys"
-version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5827cebf4670468b8772dd191856768aedcb1b0278a04f989f7766351917b9dc"
-
-[[package]]
 name = "crossbeam-channel"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -189,6 +183,16 @@ checksum = "cfcae03edb34f947e64acdb1c33ec169824e20657e9ecb61cef6c8c74dcb8120"
 dependencies = [
  "cfg-if",
  "lazy_static",
+]
+
+[[package]]
+name = "cufft_rust"
+version = "0.1.0"
+dependencies = [
+ "bindgen",
+ "drop_guard",
+ "num-complex",
+ "num-traits",
 ]
 
 [[package]]
@@ -236,7 +240,7 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "gsl_rust"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bindgen",
  "cmake",
@@ -259,6 +263,7 @@ name = "hfml_data_preprocessor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cufft_rust",
  "fast-float",
  "float-ord",
  "gsl_rust",
@@ -269,7 +274,6 @@ dependencies = [
  "rayon",
  "serde",
  "simplelog",
- "sysinfo",
  "toml",
 ]
 
@@ -346,15 +350,6 @@ dependencies = [
  "memchr",
  "minimal-lexical",
  "version_check",
-]
-
-[[package]]
-name = "ntapi"
-version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f6bb902e437b6d86e03cce10a7e2af662292c5dfef23b65899ea3ac9354ad44"
-dependencies = [
- "winapi",
 ]
 
 [[package]]
@@ -531,20 +526,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-xid",
-]
-
-[[package]]
-name = "sysinfo"
-version = "0.23.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e757000a4bed2b1be9be65a3f418b9696adf30bb419214c73997422de73a591"
-dependencies = [
- "cfg-if",
- "core-foundation-sys",
- "libc",
- "ntapi",
- "once_cell",
- "winapi",
 ]
 
 [[package]]

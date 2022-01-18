@@ -36,7 +36,7 @@ impl FromStr for Data {
             .lines()
             .map(|line| line.trim().split('\t'))
             .flatten()
-            .take_while(|entry| entry.parse::<f64>().is_err())
+            .take_while(|&entry| fast_float::parse::<f64, _>(entry).is_err())
             .collect::<Vec<_>>();
 
         // Split data into columns
@@ -45,7 +45,7 @@ impl FromStr for Data {
             let column = s
                 .lines()
                 .flat_map(|line| line.trim().split('\t'))
-                .filter_map(|entry| entry.parse::<f64>().ok())
+                .filter_map(|entry| fast_float::parse::<f64, _>(entry).ok())
                 .skip(i)
                 .step_by(headers.len())
                 .collect::<Box<[f64]>>();
