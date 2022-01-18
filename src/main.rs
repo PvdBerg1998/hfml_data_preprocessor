@@ -39,11 +39,13 @@ use simplelog::*;
 use std::collections::HashMap;
 use std::{
     fs::File,
+    path::Path,
     time::{SystemTime, UNIX_EPOCH},
 };
 
-// todo: derivative, processing
+// todo: derivative, symmetrisation
 // https://www.gnu.org/software/gsl/doc/html/interp.html#c.gsl_interp_eval_deriv_e
+// CLEAN : with preset frequencies. eg. (0, F, 2F, ...)
 
 static SETTINGS: OnceCell<settings::Settings> = OnceCell::new();
 
@@ -87,16 +89,26 @@ fn _main() -> Result<()> {
     SETTINGS.set(settings).unwrap();
 
     let settings = SETTINGS.get().unwrap();
-    for path in settings.paths()? {
-        info!("Loading file {}", path.display());
-        let s = std::fs::read_to_string(path)?;
-        process_file(&s)?;
-    }
+
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(if settings.project.threading { 0 } else { 1 })
+        .thread_name(|i| format!("worker {}", i + 1))
+        .build_global()?;
+
+    settings
+        .paths()?
+        .par_iter()
+        .try_for_each::<_, Result<_>>(|path| {
+            info!("Loading file {}", path.display());
+            let s = std::fs::read_to_string(&path)?;
+            process_file(&path, &s)?;
+            Ok(())
+        })?;
 
     Ok(())
 }
 
-fn process_file(s: &str) -> Result<()> {
+fn process_file(path: &Path, s: &str) -> Result<()> {
     let settings = SETTINGS.get().unwrap();
 
     let mut data: Data = s.parse()?;
@@ -117,30 +129,20 @@ fn process_file(s: &str) -> Result<()> {
     debug!("Columns (after replacing): {:#?}", data.columns());
 
     // Extract data pairs
-    if settings.project.threading {
-        rayon::ThreadPoolBuilder::new()
-            .thread_name(|i| format!("worker {}", i + 1))
-            .build()?
-            .install(|| {
-                settings
-                    .extract
-                    .pairs
-                    .par_iter()
-                    .try_for_each(|(name, xy)| process_pair(name, xy, &data))
-            })?;
-    } else {
-        settings
-            .extract
-            .pairs
-            .iter()
-            .try_for_each(|(name, xy)| process_pair(name, xy, &data))?;
-    }
+    settings
+        .extract
+        .pairs
+        .par_iter()
+        .try_for_each(|(name, xy)| process_pair(path, name, xy, &data))?;
 
     Ok(())
 }
 
-fn process_pair(name: &str, xy: &HashMap<String, String>, data: &Data) -> Result<()> {
+fn process_pair(path: &Path, name: &str, xy: &HashMap<String, String>, data: &Data) -> Result<()> {
     let settings = SETTINGS.get().unwrap();
+
+    let source = path.file_name().unwrap().to_str().unwrap();
+    info!("Processing file '{source}': dataset '{name}'");
 
     let x = xy
         .get("x")
@@ -282,7 +284,7 @@ fn process_pair(name: &str, xy: &HashMap<String, String>, data: &Data) -> Result
 
     // Output raw
     info!("Storing raw data");
-    save(name, "raw", xlabel, ylabel, &x, &y)?;
+    save(source, name, "raw", xlabel, ylabel, &x, &y)?;
 
     // Processing
     if let Some(processing) = &settings.processing {
@@ -344,7 +346,7 @@ fn process_pair(name: &str, xy: &HashMap<String, String>, data: &Data) -> Result
 
                 // Output pre-FFT
                 info!("Storing input to FFT");
-                save(name, "pre fft", xlabel, ylabel, &x, &y[0..n_data])?;
+                save(source, name, "pre fft", xlabel, ylabel, &x, &y[0..n_data])?;
 
                 // Execute FFT
                 let y = if fft.cuda {
@@ -381,6 +383,7 @@ fn process_pair(name: &str, xy: &HashMap<String, String>, data: &Data) -> Result
                 // Output FFT
                 info!("Storing FFT");
                 save(
+                    source,
                     name,
                     "fft",
                     "Frequency",
@@ -396,12 +399,21 @@ fn process_pair(name: &str, xy: &HashMap<String, String>, data: &Data) -> Result
     Ok(())
 }
 
-fn save(name: &str, title: &str, xlabel: &str, ylabel: &str, x: &[f64], y: &[f64]) -> Result<()> {
+fn save(
+    dir: &str,
+    name: &str,
+    title: &str,
+    xlabel: &str,
+    ylabel: &str,
+    x: &[f64],
+    y: &[f64],
+) -> Result<()> {
+    let sanitized_dir = dir.replace(' ', "_");
     let sanitized_name = name.replace(' ', "_");
     let sanitized_title = title.replace(' ', "_");
-    let csv_path = format!("output/{sanitized_title}_{sanitized_name}.csv");
-    let png_path = format!("output/{sanitized_title}_{sanitized_name}.png");
-    let _ = std::fs::create_dir("output");
+    let csv_path = format!("output/{sanitized_dir}/{sanitized_title}_{sanitized_name}.csv");
+    let png_path = format!("output/{sanitized_dir}/{sanitized_title}_{sanitized_name}.png");
+    let _ = std::fs::create_dir(format!("output/{sanitized_dir}"));
     output::store_csv(x, y, &csv_path)?;
     output::plot_csv(&csv_path, title, xlabel, ylabel, &png_path)?;
     Ok(())
