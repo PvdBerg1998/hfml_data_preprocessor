@@ -179,7 +179,7 @@ fn process_file(settings: &Settings, file: &settings::File, s: &str) -> Result<(
     parameters
         .into_par_iter()
         .try_for_each(|(file, name, xlabel, ylabel, xy)| {
-            process_pair(&settings, &file, &name, &xlabel, &ylabel, xy)
+            process_pair(settings, &file, &name, &xlabel, &ylabel, xy)
         })?;
 
     Ok(())
@@ -325,7 +325,7 @@ fn process_pair(
             // Amount of nonzero points
             let n_data = y.len();
             // Amount of padded zero points
-            let n_pad = desired_n.checked_sub(n_data).unwrap_or(0);
+            let n_pad = desired_n.saturating_sub(n_data);
 
             // FFT preprocessing: centering, windowing, padding
             if fft.center {
@@ -460,8 +460,8 @@ fn save(
 ///
 /// Rounds up to the nearest power of 2.
 fn parse_log2(n: &str) -> Result<u32> {
-    if n.starts_with("2^") {
-        match n[2..].parse::<u32>() {
+    if let Some(stripped) = n.strip_prefix("2^") {
+        match stripped.parse::<u32>() {
             Ok(n_log2) => Ok(n_log2),
             Err(_) => {
                 bail!("Invalid power of 2: {n}");

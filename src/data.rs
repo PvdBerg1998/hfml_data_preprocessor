@@ -77,6 +77,7 @@ impl fmt::Display for Data {
     }
 }
 
+#[allow(dead_code)]
 impl Data {
     pub fn iter_columns(&self) -> impl Iterator<Item = &'_ str> {
         self.data.keys().map(|x| x.as_str())
@@ -140,6 +141,7 @@ pub struct MonotonicXY {
     y: Vec<f64>,
 }
 
+#[allow(dead_code)]
 impl XY {
     pub fn len(&self) -> usize {
         self.x.len()
@@ -187,6 +189,7 @@ impl XY {
     }
 }
 
+#[allow(dead_code)]
 impl MonotonicXY {
     pub fn min_x(&self) -> f64 {
         *self.x.first().unwrap()
@@ -213,26 +216,18 @@ impl MonotonicXY {
     }
 
     pub fn take_xy(self) -> (Vec<f64>, Vec<f64>) {
-        (Vec::from(self.x), Vec::from(self.y))
+        (self.x, self.y)
     }
 
     /// Truncates the stored values to be inside or equal to the given boundaries
     /// ### Panics
     /// - When a boundary is higher than the largest x value in the data
     pub fn trim(&mut self, lower_x: f64, upper_x: f64) {
-        // Optimization: reuse exiting allocation
-        let mut x = Vec::from(std::mem::take(&mut self.x));
-        let mut y = Vec::from(std::mem::take(&mut self.y));
-
-        let lower = x.iter().position(|&x| x >= lower_x).unwrap();
-        let upper = x.iter().position(|&x| x >= upper_x).unwrap();
-
-        x.drain(0..lower);
-        y.drain(0..lower);
-        x.truncate(upper - lower);
-        y.truncate(upper - lower);
-
-        let _ = std::mem::replace(&mut self.x, x);
-        let _ = std::mem::replace(&mut self.y, y);
+        let lower = self.x.iter().position(|&x| x >= lower_x).unwrap();
+        let upper = self.x.iter().position(|&x| x >= upper_x).unwrap();
+        self.x.drain(0..lower);
+        self.y.drain(0..lower);
+        self.x.truncate(upper - lower);
+        self.y.truncate(upper - lower);
     }
 }

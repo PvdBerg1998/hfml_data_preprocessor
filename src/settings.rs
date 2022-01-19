@@ -109,6 +109,7 @@ impl Default for Algorithm {
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<gsl_rust::interpolation::Algorithm> for Algorithm {
     fn into(self) -> gsl_rust::interpolation::Algorithm {
         match self {
@@ -135,7 +136,7 @@ impl Default for Prefactor {
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct Processing {
     pub kind: ProcessingKind,
-    pub fft: Option<FFT>,
+    pub fft: Option<Fft>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize)]
@@ -146,7 +147,7 @@ pub enum ProcessingKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
-pub struct FFT {
+pub struct Fft {
     pub zero_pad: String,
     pub cuda: bool,
     pub center: bool,
