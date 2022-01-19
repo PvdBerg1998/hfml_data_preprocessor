@@ -22,32 +22,29 @@ mod data;
 mod output;
 mod settings;
 
+use crate::settings::Processing;
 use crate::settings::ProcessingKind;
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Result;
 use cufft_rust as cufft;
 use data::Data;
+use data::XY;
 use gsl_rust::fft;
 use gsl_rust::interpolation::interpolate_monotonic;
 use gsl_rust::stats;
 use log::*;
-use once_cell::sync::OnceCell;
 use rayon::prelude::*;
-use settings::Interpolation;
+use settings::{Interpolation, Settings};
 use simplelog::*;
-use std::collections::HashMap;
 use std::{
     fs::File,
-    path::Path,
     time::{SystemTime, UNIX_EPOCH},
 };
 
 // todo: derivative, symmetrisation
 // https://www.gnu.org/software/gsl/doc/html/interp.html#c.gsl_interp_eval_deriv_e
 // CLEAN : with preset frequencies. eg. (0, F, 2F, ...)
-
-static SETTINGS: OnceCell<settings::Settings> = OnceCell::new();
 
 fn main() {
     gsl_rust::disable_error_handler(); // We handle errors ourselves and this aborts the program.
@@ -57,6 +54,7 @@ fn main() {
 }
 
 fn _main() -> Result<()> {
+    // Register global logger
     let unix = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -64,7 +62,7 @@ fn _main() -> Result<()> {
     let _ = std::fs::create_dir("log");
     CombinedLogger::init(vec![
         TermLogger::new(
-            LevelFilter::Info,
+            LevelFilter::Debug,
             ConfigBuilder::default()
                 .set_time_format_str("%H:%M:%S.%f")
                 .set_thread_mode(ThreadLogMode::Names)
@@ -84,33 +82,32 @@ fn _main() -> Result<()> {
         ),
     ])?;
 
+    // Parse settings
     let settings = settings::load("Settings.toml")?;
     debug!("Settings: {settings:#?}");
-    SETTINGS.set(settings).unwrap();
 
-    let settings = SETTINGS.get().unwrap();
-
+    // Setup global thread pool
     rayon::ThreadPoolBuilder::new()
         .num_threads(if settings.project.threading { 0 } else { 1 })
         .thread_name(|i| format!("worker {}", i + 1))
         .build_global()?;
 
+    // Process files in parallel
     settings
-        .paths()?
+        .project
+        .files
         .par_iter()
-        .try_for_each::<_, Result<_>>(|path| {
-            info!("Loading file {}", path.display());
-            let s = std::fs::read_to_string(&path)?;
-            process_file(&path, &s)?;
+        .try_for_each::<_, Result<_>>(|file| {
+            info!("Loading file {}", file.source);
+            let s = std::fs::read_to_string(&file.source)?;
+            process_file(&settings, file, &s)?;
             Ok(())
         })?;
 
     Ok(())
 }
 
-fn process_file(path: &Path, s: &str) -> Result<()> {
-    let settings = SETTINGS.get().unwrap();
-
+fn process_file(settings: &Settings, file: &settings::File, s: &str) -> Result<()> {
     let mut data: Data = s.parse()?;
     debug!("Columns: {:#?}", data.columns());
 
@@ -128,47 +125,69 @@ fn process_file(path: &Path, s: &str) -> Result<()> {
     }
     debug!("Columns (after replacing): {:#?}", data.columns());
 
-    // Extract data pairs
-    settings
+    // Extract everything required to process data pairs
+    let parameters = settings
         .extract
         .pairs
-        .par_iter()
-        .try_for_each(|(name, xy)| process_pair(path, name, xy, &data))?;
+        .iter()
+        .map(|(name, xy)| {
+            info!("Processing file '{}': dataset '{name}'", file.source);
+
+            // Extract x/y names of data pair
+            let x_name = xy
+                .get("x")
+                .ok_or_else(|| anyhow!("Missing x column specification for dataset '{name}'"))?;
+            let x_name = x_name.as_str();
+            let y_name = xy
+                .get("y")
+                .ok_or_else(|| anyhow!("Missing y column specification for dataset '{name}'"))?;
+            let y_name = y_name.as_str();
+
+            // Check if the given names actually correspond to existing data columns
+            if !data.contains(x_name) {
+                bail!("specified x column '{x_name}' for dataset '{name}' does not exist");
+            }
+            if !data.contains(y_name) {
+                bail!("specified y column '{y_name}' for dataset '{name}' does not exist");
+            }
+
+            // Extract the columns
+            info!("Extracting dataset '{name}' (x='{x_name}', y='{y_name}')");
+            let xy = data.clone_xy(x_name, y_name);
+
+            // Prepare x/y labels
+            let xlabel = if settings.preprocessing.invert_x {
+                format!("1/{x_name}")
+            } else {
+                x_name.to_owned()
+            };
+            let ylabel = y_name.to_owned();
+
+            Ok((file.to_owned(), name.to_owned(), xlabel, ylabel, xy))
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    // Process data pairs in parallel
+    // It doesn't matter that we may already be parallelized,
+    // as the threadpool uses a work stealing technique
+    parameters
+        .into_par_iter()
+        .try_for_each(|(file, name, xlabel, ylabel, xy)| {
+            process_pair(&settings, &file, &name, &xlabel, &ylabel, xy)
+        })?;
 
     Ok(())
 }
 
-fn process_pair(path: &Path, name: &str, xy: &HashMap<String, String>, data: &Data) -> Result<()> {
-    let settings = SETTINGS.get().unwrap();
-
-    let source = path.file_name().unwrap().to_str().unwrap();
-    info!("Processing file '{source}': dataset '{name}'");
-
-    let x = xy
-        .get("x")
-        .ok_or_else(|| anyhow!("Missing x column specification for dataset '{name}'"))?;
-    let y = xy
-        .get("y")
-        .ok_or_else(|| anyhow!("Missing y column specification for dataset '{name}'"))?;
-
-    let xlabel = if settings.preprocessing.invert_x {
-        format!("1/{x}")
-    } else {
-        x.clone()
-    };
-    let xlabel = xlabel.as_str();
-    let ylabel = y.as_str();
-
-    if !data.contains(&*x) {
-        bail!("specified x column '{x}' for dataset '{name}' does not exist");
-    }
-    if !data.contains(&*y) {
-        bail!("specified y column '{y}' for dataset '{name}' does not exist");
-    }
-
-    info!("Extracting dataset '{name}' (x='{x}', y='{y}')");
-    let mut xy = data.xy(&*x, &*y);
-
+fn process_pair(
+    settings: &Settings,
+    file: &settings::File,
+    name: &str,
+    xlabel: &str,
+    ylabel: &str,
+    mut xy: XY,
+) -> Result<()> {
+    // Check for NaN and infinities
     if !xy.is_finite() {
         warn!("Dataset '{name}' contains non-finite values");
     }
@@ -193,227 +212,233 @@ fn process_pair(path: &Path, name: &str, xy: &HashMap<String, String>, data: &Da
 
     // Monotonicity
     info!("Making dataset monotonic");
-    let xy = xy.into_monotonic();
+    let mut xy = xy.into_monotonic();
 
     // Trimming
     if settings.preprocessing.trim_left >= settings.preprocessing.trim_right {
         bail!("Trimmed domain is empty or negative");
     }
-    let trim = if settings.preprocessing.invert_x {
+    let (trim_a, trim_b) = if settings.preprocessing.invert_x {
         if settings.preprocessing.trim_left == 0.0 || settings.preprocessing.trim_right == 0.0 {
             bail!("Can't use zero as trim boundary when inverting x");
         }
-        [
-            1.0 / settings.preprocessing.trim_right,
-            1.0 / settings.preprocessing.trim_left,
-        ]
+        let a = 1.0 / settings.preprocessing.trim_right;
+        let b = 1.0 / settings.preprocessing.trim_left;
+        (a, b)
     } else {
-        [
-            settings.preprocessing.trim_left,
-            settings.preprocessing.trim_right,
-        ]
+        let a = settings.preprocessing.trim_left;
+        let b = settings.preprocessing.trim_right;
+        (a, b)
     };
-
-    let domain = [xy.min_x(), xy.max_x()];
-    if trim[0] < domain[0] {
+    if xy.min_x() > trim_a {
         bail!(
-            "Left trim {} is outside domain {:?} for dataset '{name}'",
-            trim[0],
-            domain
+            "Left trim {trim_a} is outside domain {:?} for dataset '{name}'",
+            xy.min_x()
         );
     }
-    if trim[1] > domain[1] {
+    if xy.max_x() < trim_b {
         bail!(
-            "Right trim {} is outside domain {:?} for dataset '{name}'",
-            trim[1],
-            domain
+            "Right trim {trim_b} is outside domain {:?} for dataset '{name}'",
+            xy.max_x()
         );
     }
-    info!("Domain: {domain:?}");
-    info!("Trimmed domain: {trim:?}");
+    info!("Trimming domain to [{trim_a},{trim_b}]");
+    xy.trim(trim_a, trim_b);
 
     // Interpolation
-    let (x, y) = if let Some(Interpolation { n, algorithm }) = &settings.preprocessing.interpolation
-    {
-        // Parse and process one of:
-        // - "n"
-        // - log2("2^n")
-        // - "min": use minimum dx in dataset
-        let n_interp = if n == "min" {
-            debug!("Calculating minimum delta x");
-            match xy
-                .trimmed_xy(trim[0], trim[1])
-                .0
-                .windows(2)
-                .map(|window| {
-                    let (a, b) = (window[0], window[1]);
-                    (b - a).abs()
-                })
-                .min_by_key(|&dx| float_ord::FloatOrd(dx))
-            {
-                Some(dx) => {
-                    let n = (trim[1] - trim[0]) / dx;
-                    n.ceil() as _
+    let (x, mut y) = match &settings.preprocessing.interpolation {
+        Some(Interpolation { n, algorithm }) => {
+            // Parse and process one of:
+            // - "n"
+            // - log2("2^n")
+            // - "min": use minimum dx in dataset
+            let n_interp = if n == "min" {
+                debug!("Calculating minimum delta x");
+
+                // Loop over x, compare neighbours, find smallest interval
+                match xy
+                    .x()
+                    .windows(2)
+                    .map(|window| {
+                        let (a, b) = (window[0], window[1]);
+                        (b - a).abs()
+                    })
+                    .min_by_key(|&dx| float_ord::FloatOrd(dx))
+                {
+                    Some(dx) => {
+                        let n = xy.domain_len() / dx;
+                        n.ceil() as _
+                    }
+                    None => bail!("Unable to determine minimum delta x"),
                 }
-                None => bail!("Unable to determine minimum delta x"),
-            }
-        } else {
-            match n.parse::<u64>() {
-                Ok(n) => n,
-                Err(_) => 2u64.pow(parse_log2(n)?),
-            }
-        };
+            } else {
+                match n.parse::<u64>() {
+                    Ok(n) => n,
+                    Err(_) => 2u64.pow(parse_log2(n)?),
+                }
+            };
 
-        info!("Interpolating to {n_interp} points using {algorithm} interpolation");
-
-        // Execute interpolation
-        let delta = (trim[1] - trim[0]) / n_interp as f64;
-        let x_eval = (0..n_interp)
-            .map(|i| (i as f64) * delta + trim[0] as f64)
-            .collect::<Box<[_]>>();
-        let y_eval = interpolate_monotonic((*algorithm).into(), xy.x(), xy.y(), &x_eval)?;
-        (Vec::from(x_eval), Vec::from(y_eval))
-    } else {
-        info!("Skipping interpolation, directly truncating instead");
-        let (trimmed_x, trimmed_y) = xy.trimmed_xy(trim[0], trim[1]);
-        (trimmed_x.to_vec(), trimmed_y.to_vec())
+            info!("Interpolating to {n_interp} points using {algorithm} interpolation");
+            let dx = xy.domain_len() / n_interp as f64;
+            let x_eval = (0..n_interp)
+                .map(|i| (i as f64) * dx + xy.min_x())
+                .collect::<Box<[_]>>();
+            let y_eval = interpolate_monotonic((*algorithm).into(), xy.x(), xy.y(), &x_eval)?;
+            drop(xy);
+            (Vec::from(x_eval), Vec::from(y_eval))
+        }
+        None => xy.take_xy(),
     };
 
-    // Premature optimization :)
-    drop(xy);
-
-    // Output raw
+    // Output raw data
     info!("Storing raw data");
-    save(source, name, "raw", xlabel, ylabel, &x, &y)?;
+    save(name, "raw", &file.dest, xlabel, ylabel, &x, &y)?;
 
     // Processing
-    if let Some(processing) = &settings.processing {
-        match processing.kind {
-            ProcessingKind::Fft => {
-                let fft = match &processing.fft {
-                    Some(fft) => fft,
-                    None => bail!("Missing FFT settings"),
-                };
-
-                // Parse and process one of:
-                // - "n"
-                // - log2("2^n")
-                // - "min": use minimum padding to make the length a power of 2
-                let desired_n_log2 = if fft.zero_pad == "min" {
-                    (y.len() as f64).log2().ceil() as u32
-                } else {
-                    match fft.zero_pad.parse::<u32>() {
-                        Ok(n) => n,
-                        Err(_) => parse_log2(&fft.zero_pad)?,
-                    }
-                };
-                let desired_n = 2usize.pow(desired_n_log2);
-                let n_data = y.len();
-                let n_pad = desired_n.checked_sub(n_data).unwrap_or(0);
-
-                let mut y = y;
-
-                // FFT preprocessing: centering, windowing, padding
-                if fft.center {
-                    let mean = stats::mean(&y);
-
-                    info!("Removing mean value {mean}");
-                    y.iter_mut().for_each(|y| {
-                        *y -= mean;
-                    });
+    match &settings.processing {
+        Some(Processing {
+            kind: ProcessingKind::Fft,
+            fft: Some(fft),
+        }) => {
+            // Parse and process one of:
+            // - "n"
+            // - log2("2^n")
+            // - "min": use minimum padding to make the length a power of 2
+            let desired_n_log2 = if fft.zero_pad == "min" {
+                (y.len() as f64).log2().ceil() as u32
+            } else {
+                match fft.zero_pad.parse::<u32>() {
+                    Ok(n) => n,
+                    Err(_) => parse_log2(&fft.zero_pad)?,
                 }
-                if fft.hann {
-                    info!("Applying Hann window");
-                    y.iter_mut().enumerate().for_each(|(i, y)| {
-                        *y *= (i as f64 * std::f64::consts::PI / n_data as f64)
-                            .sin()
-                            .powi(2);
-                    });
-                }
-                if n_pad > 0 {
-                    info!(
-                            "Zero padding by {n_pad} to reach 2^{desired_n_log2} points total length ({} MB)",
-                            desired_n * std::mem::size_of::<f64>() / 1024usize.pow(2)
-                        );
-                    y.resize(desired_n, 0.0);
-                }
+            };
+            let desired_n = 2usize.pow(desired_n_log2);
 
-                // Check power of 2
-                let n = y.len();
-                if !n.is_power_of_two() {
-                    bail!("FFT is only supported for data length 2^n");
-                }
+            // Amount of nonzero points
+            let n_data = y.len();
+            // Amount of padded zero points
+            let n_pad = desired_n.checked_sub(n_data).unwrap_or(0);
 
-                // Output pre-FFT
-                info!("Storing input to FFT");
-                save(source, name, "pre fft", xlabel, ylabel, &x, &y[0..n_data])?;
+            // FFT preprocessing: centering, windowing, padding
+            if fft.center {
+                let mean = stats::mean(&y);
 
-                // Execute FFT
-                let y = if fft.cuda {
-                    if desired_n_log2 < 10 {
-                        warn!("Small FFT sizes may be faster when run on a CPU");
-                    }
-
-                    if cufft::gpu_count() == 0 {
-                        bail!("No CUDA capable GPUs available");
-                    }
-                    info!("Computing FFT on GPU 1: {}", cufft::first_gpu_name()?);
-
-                    cufft::fft64_norm(&y)?
-                } else {
-                    info!("Computing FFT on CPU");
-                    fft::fft64_packed(&mut y)?;
-                    fft::fft64_unpack_norm(&y)
-                };
-
-                // Sampled frequencies : k/(N dt)
-                // Note: this includes zero padding.
-                let lower_cutoff = fft.truncate_lower.unwrap_or(0.0);
-                let upper_cutoff = fft.truncate_upper.unwrap_or(f64::INFINITY);
-                if upper_cutoff.is_finite() {
-                    info!("Truncating FFT to {lower_cutoff}..{upper_cutoff} 'Hz'");
-                }
-                let dt = x[1] - x[0];
-                let x = (0..y.len())
-                    .map(|i| i as f64 / (dt * n as f64))
-                    .collect::<Box<[f64]>>();
-                let start_idx = ((lower_cutoff * dt * n as f64).ceil() as usize).min(y.len());
-                let end_idx = ((upper_cutoff * dt * n as f64).ceil() as usize).min(y.len());
-
-                // Output FFT
-                info!("Storing FFT");
-                save(
-                    source,
-                    name,
-                    "fft",
-                    "Frequency",
-                    "FFT Amplitude",
-                    &x[start_idx..end_idx],
-                    &y[start_idx..end_idx],
-                )?;
+                info!("Removing mean value {mean}");
+                y.iter_mut().for_each(|y| {
+                    *y -= mean;
+                });
             }
-            ProcessingKind::Symmetrize => todo!(),
+            if fft.hann {
+                info!("Applying Hann window");
+                y.iter_mut().enumerate().for_each(|(i, y)| {
+                    *y *= (i as f64 * std::f64::consts::PI / n_data as f64)
+                        .sin()
+                        .powi(2);
+                });
+            }
+            if n_pad > 0 {
+                info!(
+                    "Zero padding by {n_pad} to reach 2^{desired_n_log2} points total length ({} MB)",
+                    desired_n * std::mem::size_of::<f64>() / 1024usize.pow(2)
+                );
+                y.resize(desired_n, 0.0);
+            }
+
+            // Check power of 2
+            // This could be false if we set a padding length smaller than the data length
+            let n = y.len();
+            if !n.is_power_of_two() {
+                bail!("FFT is only supported for data length 2^n");
+            }
+
+            // Output pre-FFT
+            info!("Storing input to FFT");
+            save(
+                name,
+                "pre fft",
+                &file.dest,
+                xlabel,
+                ylabel,
+                &x,
+                &y[0..n_data],
+            )?;
+
+            // Execute FFT
+            let y = if fft.cuda {
+                if desired_n_log2 < 10 {
+                    warn!("Small FFT sizes may be faster when run on a CPU");
+                }
+
+                if cufft::gpu_count() == 0 {
+                    bail!("No CUDA capable GPUs available");
+                }
+                info!("Computing FFT on GPU '{}'", cufft::first_gpu_name()?);
+                cufft::fft64_norm(&y)?
+            } else {
+                info!("Computing FFT on CPU");
+                fft::fft64_packed(&mut y)?;
+                fft::fft64_unpack_norm(&y)
+            };
+
+            // Prepare frequency space cutoffs
+            let lower_cutoff = fft.truncate_lower.unwrap_or(0.0);
+            let upper_cutoff = fft.truncate_upper.unwrap_or(f64::INFINITY);
+            if lower_cutoff != 0.0 || upper_cutoff.is_finite() {
+                info!("Truncating FFT to {lower_cutoff}..{upper_cutoff} 'Hz'");
+            }
+
+            // Sampled frequencies : k/(N dt)
+            // Note: this includes zero padding.
+            let dt = x[1] - x[0];
+            let x = (0..y.len())
+                .map(|i| i as f64 / (dt * n as f64))
+                .collect::<Box<[f64]>>();
+            let start_idx = ((lower_cutoff * dt * n as f64).ceil() as usize).min(y.len());
+            let end_idx = ((upper_cutoff * dt * n as f64).ceil() as usize).min(y.len());
+
+            // Output FFT
+            info!("Storing FFT");
+            save(
+                name,
+                "fft",
+                &file.dest,
+                "Frequency",
+                "FFT Amplitude",
+                &x[start_idx..end_idx],
+                &y[start_idx..end_idx],
+            )?;
         }
+        Some(Processing {
+            kind: ProcessingKind::Fft,
+            fft: None,
+        }) => bail!("Missing FFT settings"),
+        Some(Processing {
+            kind: ProcessingKind::Symmetrize,
+            fft: _,
+        }) => {
+            todo!();
+        }
+        None => {}
     }
 
     Ok(())
 }
 
 fn save(
-    dir: &str,
     name: &str,
     title: &str,
+    dst: &str,
     xlabel: &str,
     ylabel: &str,
     x: &[f64],
     y: &[f64],
 ) -> Result<()> {
-    let sanitized_dir = dir.replace(' ', "_");
     let sanitized_name = name.replace(' ', "_");
     let sanitized_title = title.replace(' ', "_");
-    let csv_path = format!("output/{sanitized_dir}/{sanitized_title}_{sanitized_name}.csv");
-    let png_path = format!("output/{sanitized_dir}/{sanitized_title}_{sanitized_name}.png");
-    let _ = std::fs::create_dir(format!("output/{sanitized_dir}"));
+    let sanitized_dst = dst.replace(' ', "_");
+    let csv_path = format!("output/{sanitized_name}/{sanitized_title}/{sanitized_dst}.csv");
+    let png_path = format!("output/{sanitized_name}/{sanitized_title}/{sanitized_dst}.png");
+    let _ = std::fs::create_dir(format!("output/{sanitized_name}/{sanitized_title}"));
     output::store_csv(x, y, &csv_path)?;
     output::plot_csv(&csv_path, title, xlabel, ylabel, &png_path)?;
     Ok(())

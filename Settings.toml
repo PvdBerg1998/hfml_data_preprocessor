@@ -1,6 +1,9 @@
 [project]
-files = ["13", "73", "74"]
 threading = true
+
+[[project.files]]
+dest = "measurement_013"
+source = "file.013.dat"
 
 [rename]
 "B(T)" = "B"
@@ -20,11 +23,11 @@ y = "Vxy"
 
 [preprocessing]
 invert_x = true
-trim_left = 4
-trim_right = 15.95
+trim_left = 12
+trim_right = 32.95
 
 [preprocessing.interpolation]
-algorithm = "steffen"
+algorithm = "linear"
 n = "min"
 
 [preprocessing.prefactor]

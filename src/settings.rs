@@ -16,15 +16,11 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-use anyhow::anyhow;
 use anyhow::Result;
 use num_traits::one;
 use serde::Deserialize;
 use std::fmt;
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, path::Path};
 
 pub fn load<P: AsRef<Path>>(path: P) -> Result<Settings> {
     let s = std::fs::read_to_string(path)?;
@@ -40,62 +36,25 @@ pub struct Settings {
     pub processing: Option<Processing>,
 }
 
-impl Settings {
-    pub fn paths(&self) -> Result<Vec<PathBuf>> {
-        self.project.paths()
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct Project {
-    pub files: Vec<String>,
+    pub files: Vec<File>,
     pub threading: bool,
 }
 
-impl Project {
-    pub fn paths(&self) -> Result<Vec<PathBuf>> {
-        let paths = self
-            .files
-            .iter()
-            .map(|f| {
-                if f.contains("..") {
-                    // assume its a range
-                    let mut split = f.split("..");
-                    let a = split
-                        .next()
-                        .ok_or_else(|| anyhow!("Invalid file range"))?
-                        .parse()?;
-                    let b = split
-                        .next()
-                        .ok_or_else(|| anyhow!("Invalid file range"))?
-                        .parse()?;
-                    Ok((a..b)
-                        .map(|i: usize| PathBuf::from(format!("file.{i:0>3}.dat")))
-                        .collect::<Vec<_>>())
-                } else {
-                    // try to parse as an index
-                    let a = f.parse::<usize>();
-                    match a {
-                        Ok(a) => Ok(vec![PathBuf::from(format!("file.{a:0>3}.dat"))]),
-                        Err(_) => {
-                            // assume its a full path
-                            Ok(vec![PathBuf::from(f)])
-                        }
-                    }
-                }
-            })
-            .collect::<Result<Vec<Vec<_>>>>();
-        Ok(paths?.into_iter().flatten().collect())
-    }
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+pub struct File {
+    pub source: String,
+    pub dest: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct Rename {
     #[serde(flatten)]
     pub columns: HashMap<String, String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct Extract {
     #[serde(flatten)]
     pub pairs: HashMap<String, HashMap<String, String>>,
@@ -112,14 +71,14 @@ pub struct Preprocessing {
     pub trim_right: f64,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct Interpolation {
     pub n: String,
     #[serde(default)]
     pub algorithm: Algorithm,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Algorithm {
     Linear,

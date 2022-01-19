@@ -24,7 +24,7 @@ use std::str::FromStr;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Data {
-    data: HashMap<String, Box<[f64]>>,
+    data: HashMap<String, Vec<f64>>,
 }
 
 impl FromStr for Data {
@@ -48,7 +48,7 @@ impl FromStr for Data {
                 .filter_map(|entry| fast_float::parse::<f64, _>(entry).ok())
                 .skip(i)
                 .step_by(headers.len())
-                .collect::<Box<[f64]>>();
+                .collect::<Vec<f64>>();
             data.insert(String::from(header), column);
         }
 
@@ -116,14 +116,14 @@ impl Data {
     /// - When columns do not exist
     /// - When columns do not have the same length
     /// - When columns are empty
-    pub fn xy(&self, x: &str, y: &str) -> XY {
-        let x = self.column(x);
-        let y = self.column(y);
+    pub fn clone_xy(&mut self, x: &str, y: &str) -> XY {
+        let x = self.data.get(x).unwrap();
+        let y = self.data.get(y).unwrap();
         assert_eq!(x.len(), y.len(), "XY columns have a different length");
         assert!(!x.is_empty(), "XY columns are empty");
         XY {
-            x: x.to_vec(),
-            y: y.to_vec(),
+            x: x.clone(),
+            y: y.clone(),
         }
     }
 }
@@ -136,8 +136,8 @@ pub struct XY {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MonotonicXY {
-    x: Box<[f64]>,
-    y: Box<[f64]>,
+    x: Vec<f64>,
+    y: Vec<f64>,
 }
 
 impl XY {
@@ -204,20 +204,35 @@ impl MonotonicXY {
         &self.y
     }
 
+    pub fn domain_len(&self) -> f64 {
+        self.max_x() - self.min_x()
+    }
+
     pub fn xy(&self) -> (&[f64], &[f64]) {
         (&self.x, &self.y)
     }
 
-    /// Returns a slice, truncated to x values given.
+    pub fn take_xy(self) -> (Vec<f64>, Vec<f64>) {
+        (Vec::from(self.x), Vec::from(self.y))
+    }
+
+    /// Truncates the stored values to be inside or equal to the given boundaries
     /// ### Panics
     /// - When a boundary is higher than the largest x value in the data
-    pub fn trimmed_xy(&self, lower_x: f64, upper_x: f64) -> (&[f64], &[f64]) {
-        let lower = self.x.iter().position(|&b| b >= lower_x).unwrap();
-        let upper = self.x.iter().position(|&b| b >= upper_x).unwrap();
+    pub fn trim(&mut self, lower_x: f64, upper_x: f64) {
+        // Optimization: reuse exiting allocation
+        let mut x = Vec::from(std::mem::take(&mut self.x));
+        let mut y = Vec::from(std::mem::take(&mut self.y));
 
-        let x = &self.x[lower..upper];
-        let y = &self.y[lower..upper];
+        let lower = x.iter().position(|&x| x >= lower_x).unwrap();
+        let upper = x.iter().position(|&x| x >= upper_x).unwrap();
 
-        (x, y)
+        x.drain(0..lower);
+        y.drain(0..lower);
+        x.truncate(upper - lower);
+        y.truncate(upper - lower);
+
+        let _ = std::mem::replace(&mut self.x, x);
+        let _ = std::mem::replace(&mut self.y, y);
     }
 }
