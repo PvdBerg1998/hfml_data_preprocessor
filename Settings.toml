@@ -1,11 +1,23 @@
 [project]
+# What data to store. Reducing these steps will improve runtime speed.
+# Possible values:
+# - "raw"           : After preprocessing
+# - "intermediate"  : Before the final processing step (e.g. after windowing)
+# - "final"         : After processing
 output = ["raw", "intermediate", "final"]
+# Multithreading toggle
+# Recommended: true
 threading = true
 
+# Repeat this for each file you wish to process
 [[project.files]]
-dest = "measurement_013"
+# Raw data source file. Assumed to be in the HFML labview format
 source = "file.013.dat"
+# Output name. Choose something descriptive (sample, temperature, etc.)
+dest = "measurement_013"
 
+# Renaming of columns
+# Useful when processing data that has the same meaning but different labels or typo's
 [rename]
 "B(T)" = "B"
 "Field" = "B"
@@ -14,6 +26,9 @@ source = "file.013.dat"
 "V_37_x" = "Vxy"
 "V_68_x" = "Vxx"
 
+# Data sets to extract
+# The name of each set is arbitrary: extract.<name>
+# The x/y names should correspond to existing headers in the data file (after renaming).
 [extract.Vxx]
 x = "B"
 y = "Vxx"
@@ -23,25 +38,59 @@ x = "B"
 y = "Vxy"
 
 [preprocessing]
+# Optional: x inversion, i.e. x -> 1/x
 invert_x = true
+# Trim the x domain
+# When inverting x, these values are automatically inverted as well for convenience.
 trim_left = 12
 trim_right = 32.95
 
+# Optional: preprocessing interpolation.
 [preprocessing.interpolation]
+# Possible values: linear, Steffen splines.
+# Steffen splines are constrained cubic splines,
+# with no oscillations between data points and a smooth first derivative.
 algorithm = "linear"
+# Interpolation amount
+# Possible values:
+# - "n"     : direct interpolation amount. E.g. "1000".
+# - "2^n"   : same as "n" but a power of two.
+# - "min"   : minimum x spacing of dataset.
+# Recommended: "min"
 n = "min"
 
+# Optional: multiplication of x/y with a constant.
+# This happens _before_ trimming and inversion.
 [preprocessing.prefactor]
 x = 1
 y = 1
 
 [processing]
+# Possible values:
+# - "fft". This requires additional settings in processing.fft.
+# - "symmetrize"
 kind = "fft"
 
+# Only required if processing.kind = "fft"
 [processing.fft]
+# Remove DC component
 center = true
+# Use CUDA FFT backend. Requires a modern NVIDIA GPU.
+# This may result in a dramatic speedup of the FFT step for large lengths (see zero_pad).
+# Recommended: true when your hardware supports it.
 cuda = false
+# Apply Hann window
 hann = true
+# Optional: frequency space truncation
+# This has units of 1/x.
 truncate_lower = 100
 truncate_upper = 600
+# Zero padded data length.
+# Increasing this will result in a smoother spectrum with no data loss.
+# NB. This length _includes_ the original data.
+# Possible values:
+# - "n"     : direct zero padding amount. E.g. "1000". NB. This _must_ be a power of two.
+# - "2^n"   : same as "n" but a power of two.
+# - "min"   : minimum required to reach the nearest power of two.
+# Recommended : near "2^20".
 zero_pad = "2^22"
