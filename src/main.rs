@@ -35,7 +35,7 @@ use gsl_rust::interpolation::interpolate_monotonic;
 use gsl_rust::stats;
 use log::*;
 use rayon::prelude::*;
-use settings::{Interpolation, Settings};
+use settings::{Interpolation, Output, Settings};
 use simplelog::*;
 use std::{
     fs::File,
@@ -83,8 +83,14 @@ fn _main() -> Result<()> {
     ])?;
 
     // Parse settings
-    let settings = settings::load("Settings.toml")?;
+    let settings = settings::load("settings.toml")?;
     debug!("Settings: {settings:#?}");
+    if settings.project.output.is_empty() {
+        warn!("Output list is empty: no data will be saved");
+    }
+    if !settings.project.output.contains(&Output::Final) {
+        warn!("Final output will not be saved");
+    }
 
     // Setup global thread pool
     rayon::ThreadPoolBuilder::new()
@@ -291,8 +297,10 @@ fn process_pair(
     };
 
     // Output raw data
-    info!("Storing raw data");
-    save(name, "raw", &file.dest, xlabel, ylabel, &x, &y)?;
+    if settings.project.output.contains(&Output::Raw) {
+        info!("Storing raw data");
+        save(name, "raw", &file.dest, xlabel, ylabel, &x, &y)?;
+    }
 
     // Processing
     match &settings.processing {
@@ -352,16 +360,18 @@ fn process_pair(
             }
 
             // Output pre-FFT
-            info!("Storing input to FFT");
-            save(
-                name,
-                "pre fft",
-                &file.dest,
-                xlabel,
-                ylabel,
-                &x,
-                &y[0..n_data],
-            )?;
+            if settings.project.output.contains(&Output::Intermediate) {
+                info!("Storing input to FFT");
+                save(
+                    name,
+                    "pre fft",
+                    &file.dest,
+                    xlabel,
+                    ylabel,
+                    &x,
+                    &y[0..n_data],
+                )?;
+            }
 
             // Execute FFT
             let y = if fft.cuda {
@@ -397,16 +407,18 @@ fn process_pair(
             let end_idx = ((upper_cutoff * dt * n as f64).ceil() as usize).min(y.len());
 
             // Output FFT
-            info!("Storing FFT");
-            save(
-                name,
-                "fft",
-                &file.dest,
-                "Frequency",
-                "FFT Amplitude",
-                &x[start_idx..end_idx],
-                &y[start_idx..end_idx],
-            )?;
+            if settings.project.output.contains(&Output::Final) {
+                info!("Storing FFT");
+                save(
+                    name,
+                    "fft",
+                    &file.dest,
+                    "Frequency",
+                    "FFT Amplitude",
+                    &x[start_idx..end_idx],
+                    &y[start_idx..end_idx],
+                )?;
+            }
         }
         Some(Processing {
             kind: ProcessingKind::Fft,

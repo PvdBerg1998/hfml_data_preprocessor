@@ -39,7 +39,16 @@ pub struct Settings {
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct Project {
     pub files: Vec<File>,
+    pub output: Vec<Output>,
     pub threading: bool,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Output {
+    Raw,
+    Intermediate,
+    Final,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]

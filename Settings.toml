@@ -1,4 +1,5 @@
 [project]
+output = ["raw", "intermediate", "final"]
 threading = true
 
 [[project.files]]
