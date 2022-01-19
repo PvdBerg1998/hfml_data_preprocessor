@@ -1,3 +1,20 @@
+# hfml_data_preprocessor settings file template.
+#
+#     Copyright (C) 2021 Pim van den Berg
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 [project]
 # What data to store. Reducing these steps will improve runtime speed.
 # Possible values:
@@ -109,5 +126,5 @@ truncate_upper = 600
 # - "n"     : direct zero padding amount. E.g. "1000". NB. This _must_ be a power of two.
 # - "2^n"   : same as "n" but a power of two.
 # - "min"   : minimum required to reach the nearest power of two.
-# Recommended : near "2^20".
+# Recommended: near "2^20".
 zero_pad = "2^22"
