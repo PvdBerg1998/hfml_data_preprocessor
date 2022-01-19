@@ -16,6 +16,10 @@ source = "file.013.dat"
 # Output name. Choose something descriptive (sample, temperature, etc.)
 dest = "measurement_013"
 
+#
+# HEADER RENAMING
+#
+
 # Renaming of columns
 # Useful when processing data that has the same meaning but different labels or typo's
 [rename]
@@ -25,6 +29,10 @@ dest = "measurement_013"
 "S1_Vxy_9_13_x" = "Vxy"
 "V_37_x" = "Vxy"
 "V_68_x" = "Vxx"
+
+#
+# DATASET EXTRACTION
+#
 
 # Data sets to extract
 # The name of each set is arbitrary: extract.<name>
@@ -37,6 +45,10 @@ y = "Vxx"
 x = "B"
 y = "Vxy"
 
+#
+# PREPROCESSING
+#
+
 [preprocessing]
 # Optional: x inversion, i.e. x -> 1/x
 invert_x = true
@@ -45,7 +57,14 @@ invert_x = true
 trim_left = 12
 trim_right = 32.95
 
+# Optional: multiplication of x/y with a constant.
+# This happens _before_ trimming and inversion.
+[preprocessing.prefactor]
+x = 1
+y = 1
+
 # Optional: preprocessing interpolation.
+# Interpolation happens as the last step in preprocessing.
 [preprocessing.interpolation]
 # Possible values: linear, Steffen splines.
 # Steffen splines are constrained cubic splines,
@@ -59,11 +78,9 @@ algorithm = "linear"
 # Recommended: "min"
 n = "min"
 
-# Optional: multiplication of x/y with a constant.
-# This happens _before_ trimming and inversion.
-[preprocessing.prefactor]
-x = 1
-y = 1
+#
+# PROCESSING
+#
 
 [processing]
 # Possible values:
@@ -73,7 +90,7 @@ kind = "fft"
 
 # Only required if processing.kind = "fft"
 [processing.fft]
-# Remove DC component
+# Remove DC component by subtracting the global mean
 center = true
 # Use CUDA FFT backend. Requires a modern NVIDIA GPU.
 # This may result in a dramatic speedup of the FFT step for large lengths (see zero_pad).
