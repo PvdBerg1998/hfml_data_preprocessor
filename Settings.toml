@@ -18,10 +18,11 @@
 [project]
 # What data to store. Reducing these steps will improve runtime speed.
 # Possible values:
-# - "raw"           : After extraction
-# - "preprocessed"  : After preprocessing
-# - "processed"     : After processing
-output = ["raw", "preprocessed", "processed"]
+# - "raw"               : After extraction
+# - "preinterpolation"  : After preprocessing, before interpolation
+# - "preprocessed"      : After preprocessing, after interpolation
+# - "processed"         : After processing
+output = ["raw", "preinterpolation", "preprocessed", "processed"]
 # Multithreading toggle
 # Recommended: true
 threading = true

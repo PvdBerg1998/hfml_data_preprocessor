@@ -80,7 +80,8 @@ fn _main() -> Result<()> {
     ])?;
 
     // Parse settings
-    let settings = settings::load("settings.toml")?;
+    let settings =
+        settings::load("settings.toml").map_err(|e| anyhow!("Failed to load settings: {e}"))?;
     debug!("Settings: {settings:#?}");
     if settings.project.output.is_empty() {
         warn!("Output list is empty: no data will be saved");
@@ -250,6 +251,20 @@ fn process_pair(
     }
     info!("Trimming domain to [{trim_a},{trim_b}]");
     xy.trim(trim_a, trim_b);
+
+    // Output preprocessed data
+    if settings.project.output.contains(&Output::PreInterpolation) {
+        info!("Storing pre-interpolation data");
+        save(
+            name,
+            "pre interpolation",
+            &file.dest,
+            xlabel,
+            ylabel,
+            xy.x(),
+            xy.y(),
+        )?;
+    }
 
     // Interpolation
     let (x, mut y) = match &settings.preprocessing.interpolation {
