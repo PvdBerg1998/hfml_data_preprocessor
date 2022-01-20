@@ -22,7 +22,7 @@
 # - "preinterpolation"  : After preprocessing, before interpolation
 # - "postinterpolation" : After preprocessing, after interpolation
 # - "processed"         : After processing
-output = ["raw", "preinterpolation", "postinterpolation", "processed"]
+output = ["raw", "processed"]
 # Multithreading toggle
 # Recommended: true
 threading = true
@@ -55,9 +55,9 @@ dest = "measurement_013"
 # Data sets to extract
 # The name of each set is arbitrary: extract.<name>
 # The x/y names should correspond to existing headers in the data file (after renaming).
-[extract.Vxx]
-x = "B"
-y = "Vxx"
+#[extract.Vxx]
+#x = "B"
+#y = "Vxx"
 
 [extract.Vxy]
 x = "B"
@@ -122,11 +122,12 @@ kind = "fft"
 # Only required if processing.kind = "fft"
 [processing.fft]
 # Remove DC component by subtracting the global mean
-center = true
+# Recommended: false
+center = false
 # Use CUDA FFT backend. Requires a modern NVIDIA GPU.
 # This may result in a dramatic speedup of the FFT step for large lengths (see zero_pad).
 # Recommended: true when your hardware supports it.
-cuda = false
+cuda = true
 # Apply Hann window
 hann = false
 # Optional: frequency space truncation

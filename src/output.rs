@@ -27,7 +27,11 @@ use std::{fs::File, io::BufWriter, path::Path};
 pub fn store_csv<P: AsRef<Path>>(x: &[f64], y: &[f64], path: P) -> Result<()> {
     assert_eq!(x.len(), y.len());
     let mut w = BufWriter::new(File::create(path)?);
+    let mut x_buf = ryu::Buffer::new();
+    let mut y_buf = ryu::Buffer::new();
     for (x, y) in x.iter().zip(y.iter()) {
+        let x = x_buf.format(*x);
+        let y = y_buf.format(*y);
         writeln!(&mut w, "{x},{y}")?;
     }
     Ok(())
