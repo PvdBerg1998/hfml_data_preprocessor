@@ -143,7 +143,6 @@ pub struct Processing {
 #[serde(rename_all = "lowercase")]
 pub enum ProcessingKind {
     Fft,
-    Symmetrize,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]

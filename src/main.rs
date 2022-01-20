@@ -42,7 +42,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-// todo: derivative, symmetrisation
+// todo: derivative
 // https://www.gnu.org/software/gsl/doc/html/interp.html#c.gsl_interp_eval_deriv_e
 // CLEAN : with preset frequencies. eg. (0, F, 2F, ...)
 
@@ -424,13 +424,16 @@ fn process_pair(
             kind: ProcessingKind::Fft,
             fft: None,
         }) => bail!("Missing FFT settings"),
-        Some(Processing {
-            kind: ProcessingKind::Symmetrize,
-            fft: _,
-        }) => {
-            todo!();
+        None => {
+            if settings.project.output.contains(&Output::Final) {
+                if !settings.project.output.contains(&Output::Raw) {
+                    info!("Storing raw data (not processed)");
+                    save(name, "raw", &file.dest, xlabel, ylabel, &x, &y)?;
+                } else {
+                    warn!("No processing, final data is equal to raw data");
+                }
+            }
         }
-        None => {}
     }
 
     Ok(())

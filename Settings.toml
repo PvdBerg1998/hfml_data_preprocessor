@@ -99,10 +99,10 @@ n = "min"
 # PROCESSING
 #
 
+# Optional: final processing step
 [processing]
 # Possible values:
-# - "fft". This requires additional settings in processing.fft.
-# - "symmetrize"
+# - "fft". This requires additional settings in processing.fft
 kind = "fft"
 
 # Only required if processing.kind = "fft"
