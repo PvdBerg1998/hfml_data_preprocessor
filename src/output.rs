@@ -49,6 +49,7 @@ set output '{out}'
 set title '{title}' font ',24'
 set xlabel '{xlabel}' font ',16'
 set ylabel '{ylabel}' font ',16'
+set autoscale xy
 set key off
 plot '{csv}' using 1:2 with lines lw 2
 exit"
