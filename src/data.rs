@@ -223,6 +223,10 @@ impl MonotonicXY {
     /// ### Panics
     /// - When a boundary is higher than the largest x value in the data
     pub fn trim(&mut self, lower_x: f64, upper_x: f64) {
+        if lower_x == self.min_x() && upper_x == self.max_x() {
+            return;
+        }
+
         let lower = self.x.iter().position(|&x| x >= lower_x).unwrap();
         let upper = self.x.iter().position(|&x| x >= upper_x).unwrap();
         self.x.drain(0..lower);

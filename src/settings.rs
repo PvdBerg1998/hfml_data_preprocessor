@@ -48,7 +48,7 @@ pub struct Project {
 pub enum Output {
     Raw,
     PreInterpolation,
-    Preprocessed,
+    PostInterpolation,
     Processed,
 }
 
@@ -77,8 +77,8 @@ pub struct Preprocessing {
     #[serde(default)]
     pub invert_x: bool,
     pub interpolation: Option<Interpolation>,
-    pub trim_left: f64,
-    pub trim_right: f64,
+    pub trim_left: Option<f64>,
+    pub trim_right: Option<f64>,
     #[serde(default)]
     pub derivative: u32,
 }

@@ -20,9 +20,9 @@
 # Possible values:
 # - "raw"               : After extraction
 # - "preinterpolation"  : After preprocessing, before interpolation
-# - "preprocessed"      : After preprocessing, after interpolation
+# - "postinterpolation" : After preprocessing, after interpolation
 # - "processed"         : After processing
-output = ["raw", "preinterpolation", "preprocessed", "processed"]
+output = ["raw", "preinterpolation", "postinterpolation", "processed"]
 # Multithreading toggle
 # Recommended: true
 threading = true
@@ -70,7 +70,7 @@ y = "Vxy"
 [preprocessing]
 # Optional: x inversion, i.e. x -> 1/x
 invert_x = true
-# Trim the x domain
+# Optional: x domain trimming
 # When inverting x, these values are automatically inverted as well for convenience.
 trim_left = 12
 trim_right = 32.95

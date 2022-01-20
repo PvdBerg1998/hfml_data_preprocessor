@@ -26,6 +26,7 @@ use crate::settings::Processing;
 use crate::settings::ProcessingKind;
 use anyhow::anyhow;
 use anyhow::bail;
+use anyhow::ensure;
 use anyhow::Result;
 use cufft_rust as cufft;
 use data::Data;
@@ -145,12 +146,14 @@ fn process_file(settings: &Settings, file: &settings::File, s: &str) -> Result<(
             let y_name = y_name.as_str();
 
             // Check if the given names actually correspond to existing data columns
-            if !data.contains(x_name) {
-                bail!("specified x column '{x_name}' for dataset '{name}' does not exist");
-            }
-            if !data.contains(y_name) {
-                bail!("specified y column '{y_name}' for dataset '{name}' does not exist");
-            }
+            ensure!(
+                data.contains(x_name),
+                "specified x column '{x_name}' for dataset '{name}' does not exist"
+            );
+            ensure!(
+                data.contains(y_name),
+                "specified y column '{y_name}' for dataset '{name}' does not exist"
+            );
 
             // Extract the columns
             info!("Extracting dataset '{name}' (x='{x_name}', y='{y_name}')");
@@ -222,34 +225,33 @@ fn process_pair(
     let mut xy = xy.into_monotonic();
 
     // Trimming
-    if settings.preprocessing.trim_left >= settings.preprocessing.trim_right {
-        bail!("Trimmed domain is empty or negative");
-    }
-    let (trim_a, trim_b) = if settings.preprocessing.invert_x {
-        if settings.preprocessing.trim_left == 0.0 || settings.preprocessing.trim_right == 0.0 {
-            bail!("Can't use zero as trim boundary when inverting x");
-        }
-        let a = 1.0 / settings.preprocessing.trim_right;
-        let b = 1.0 / settings.preprocessing.trim_left;
-        (a, b)
+    let trim_a = if settings.preprocessing.invert_x {
+        settings.preprocessing.trim_right.map(|x| 1.0 / x)
     } else {
-        let a = settings.preprocessing.trim_left;
-        let b = settings.preprocessing.trim_right;
-        (a, b)
-    };
-    if xy.min_x() > trim_a {
-        bail!(
-            "Left trim {trim_a} is outside domain {:?} for dataset '{name}'",
-            xy.min_x()
-        );
+        settings.preprocessing.trim_left
     }
-    if xy.max_x() < trim_b {
-        bail!(
-            "Right trim {trim_b} is outside domain {:?} for dataset '{name}'",
-            xy.max_x()
-        );
+    .unwrap_or(xy.min_x());
+    let trim_b = if settings.preprocessing.invert_x {
+        settings.preprocessing.trim_left.map(|x| 1.0 / x)
+    } else {
+        settings.preprocessing.trim_right
     }
-    info!("Trimming domain to [{trim_a},{trim_b}]");
+    .unwrap_or(xy.max_x());
+    ensure!(
+        settings.preprocessing.trim_left < settings.preprocessing.trim_right,
+        "Trimmed domain is empty or negative"
+    );
+    ensure!(
+        xy.min_x() <= trim_a,
+        "Left trim {trim_a} is outside domain {:?} for dataset '{name}'",
+        xy.min_x()
+    );
+    ensure!(
+        xy.max_x() >= trim_b,
+        "Right trim {trim_b} is outside domain {:?} for dataset '{name}'",
+        xy.max_x()
+    );
+    info!("Data domain: [{trim_a},{trim_b}]");
     xy.trim(trim_a, trim_b);
 
     // Output preprocessed data
@@ -324,10 +326,18 @@ fn process_pair(
         None => xy.take_xy(),
     };
 
-    // Output preprocessed data
-    if settings.project.output.contains(&Output::Preprocessed) {
-        info!("Storing preprocessed data");
-        save(name, "preprocessed", &file.dest, xlabel, ylabel, &x, &y)?;
+    // Output post interpolation data
+    if settings.project.output.contains(&Output::PostInterpolation) {
+        info!("Storing post-interpolation data");
+        save(
+            name,
+            "post interpolation",
+            &file.dest,
+            xlabel,
+            ylabel,
+            &x,
+            &y,
+        )?;
     }
 
     // Processing
@@ -383,9 +393,10 @@ fn process_pair(
             // Check power of 2
             // This could be false if we set a padding length smaller than the data length
             let n = y.len();
-            if !n.is_power_of_two() {
-                bail!("FFT is only supported for data length 2^n");
-            }
+            ensure!(
+                n.is_power_of_two(),
+                "FFT is only supported for data length 2^n"
+            );
 
             // Execute FFT
             let y = if fft.cuda {
@@ -458,7 +469,7 @@ fn save(
     let sanitized_dst = dst.replace(' ', "_");
     let csv_path = format!("output/{sanitized_name}/{sanitized_title}/{sanitized_dst}.csv");
     let png_path = format!("output/{sanitized_name}/{sanitized_title}/{sanitized_dst}.png");
-    let _ = std::fs::create_dir(format!("output/{sanitized_name}/{sanitized_title}"));
+    let _ = std::fs::create_dir_all(format!("output/{sanitized_name}/{sanitized_title}"));
     output::store_csv(x, y, &csv_path)?;
     output::plot_csv(&csv_path, title, xlabel, ylabel, &png_path)?;
     Ok(())
