@@ -78,6 +78,8 @@ pub struct Preprocessing {
     pub interpolation: Option<Interpolation>,
     pub trim_left: f64,
     pub trim_right: f64,
+    #[serde(default)]
+    pub derivative: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]

@@ -32,6 +32,7 @@ use data::Data;
 use data::XY;
 use gsl_rust::fft;
 use gsl_rust::interpolation::interpolate_monotonic;
+use gsl_rust::interpolation::Derivative;
 use gsl_rust::stats;
 use log::*;
 use rayon::prelude::*;
@@ -41,10 +42,6 @@ use std::{
     fs::File,
     time::{SystemTime, UNIX_EPOCH},
 };
-
-// todo: derivative
-// https://www.gnu.org/software/gsl/doc/html/interp.html#c.gsl_interp_eval_deriv_e
-// CLEAN : with preset frequencies. eg. (0, F, 2F, ...)
 
 fn main() {
     gsl_rust::disable_error_handler(); // We handle errors ourselves and this aborts the program.
@@ -284,7 +281,15 @@ fn process_pair(
                 }
             };
 
-            info!("Interpolating to {n_interp} points using {algorithm} interpolation");
+            let deriv = settings.preprocessing.derivative;
+            let deriv = match settings.preprocessing.derivative {
+                0 => Derivative::None,
+                1 => Derivative::First,
+                2 => Derivative::Second,
+                _ => bail!("Only the 0th, 1st and 2nd derivative are supported"),
+            };
+
+            info!("Interpolating the {deriv} to {n_interp} points using {algorithm} interpolation");
             let dx = xy.domain_len() / n_interp as f64;
             let x_eval = (0..n_interp)
                 .map(|i| (i as f64) * dx + xy.min_x())

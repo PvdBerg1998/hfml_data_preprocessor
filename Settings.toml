@@ -73,6 +73,13 @@ invert_x = true
 # When inverting x, these values are automatically inverted as well for convenience.
 trim_left = 12
 trim_right = 32.95
+# Optional: derivative
+# Possible values: 0, 1, 2
+# Note that linear interpolation will result in a C^0 function,
+# such that the derivative will be garbage.
+# The derivative amplifies noise.
+# These are of no concern for the FFT.
+derivative = 1
 
 # Optional: multiplication of x/y with a constant.
 # This happens _before_ trimming and inversion.
