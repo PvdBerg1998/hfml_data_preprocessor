@@ -18,10 +18,10 @@
 [project]
 # What data to store. Reducing these steps will improve runtime speed.
 # Possible values:
-# - "raw"           : After preprocessing
-# - "intermediate"  : Before the final processing step (e.g. after windowing)
-# - "final"         : After processing
-output = ["raw", "intermediate", "final"]
+# - "raw"           : After extraction
+# - "preprocessed"  : After preprocessing
+# - "processed"     : After processing
+output = ["raw", "preprocessed", "processed"]
 # Multithreading toggle
 # Recommended: true
 threading = true

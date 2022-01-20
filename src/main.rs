@@ -85,9 +85,6 @@ fn _main() -> Result<()> {
     if settings.project.output.is_empty() {
         warn!("Output list is empty: no data will be saved");
     }
-    if !settings.project.output.contains(&Output::Final) {
-        warn!("Final output will not be saved");
-    }
 
     // Setup global thread pool
     rayon::ThreadPoolBuilder::new()
@@ -195,6 +192,12 @@ fn process_pair(
         warn!("Dataset '{name}' contains non-finite values");
     }
 
+    // Output raw data
+    if settings.project.output.contains(&Output::Raw) {
+        info!("Storing raw data");
+        save(name, "raw", &file.dest, xlabel, ylabel, xy.x(), xy.y())?;
+    }
+
     // Premultiplication
     let mx = settings.preprocessing.prefactor.x;
     let my = settings.preprocessing.prefactor.y;
@@ -281,30 +284,35 @@ fn process_pair(
                 }
             };
 
-            let deriv = settings.preprocessing.derivative;
             let deriv = match settings.preprocessing.derivative {
                 0 => Derivative::None,
                 1 => Derivative::First,
                 2 => Derivative::Second,
                 _ => bail!("Only the 0th, 1st and 2nd derivative are supported"),
             };
+            let deriv_str = match deriv {
+                Derivative::None => "function",
+                Derivative::First => "1st derivative",
+                Derivative::Second => "2nd derivative",
+            };
 
-            info!("Interpolating the {deriv} to {n_interp} points using {algorithm} interpolation");
+            info!("Interpolating {deriv_str} at {n_interp} points using {algorithm} interpolation");
             let dx = xy.domain_len() / n_interp as f64;
             let x_eval = (0..n_interp)
                 .map(|i| (i as f64) * dx + xy.min_x())
                 .collect::<Box<[_]>>();
-            let y_eval = interpolate_monotonic((*algorithm).into(), xy.x(), xy.y(), &x_eval)?;
+            let y_eval =
+                interpolate_monotonic((*algorithm).into(), deriv, xy.x(), xy.y(), &x_eval)?;
             drop(xy);
             (Vec::from(x_eval), Vec::from(y_eval))
         }
         None => xy.take_xy(),
     };
 
-    // Output raw data
-    if settings.project.output.contains(&Output::Raw) {
-        info!("Storing raw data");
-        save(name, "raw", &file.dest, xlabel, ylabel, &x, &y)?;
+    // Output preprocessed data
+    if settings.project.output.contains(&Output::Preprocessed) {
+        info!("Storing preprocessed data");
+        save(name, "preprocessed", &file.dest, xlabel, ylabel, &x, &y)?;
     }
 
     // Processing
@@ -364,20 +372,6 @@ fn process_pair(
                 bail!("FFT is only supported for data length 2^n");
             }
 
-            // Output pre-FFT
-            if settings.project.output.contains(&Output::Intermediate) {
-                info!("Storing input to FFT");
-                save(
-                    name,
-                    "pre fft",
-                    &file.dest,
-                    xlabel,
-                    ylabel,
-                    &x,
-                    &y[0..n_data],
-                )?;
-            }
-
             // Execute FFT
             let y = if fft.cuda {
                 if desired_n_log2 < 10 {
@@ -412,7 +406,7 @@ fn process_pair(
             let end_idx = ((upper_cutoff * dt * n as f64).ceil() as usize).min(y.len());
 
             // Output FFT
-            if settings.project.output.contains(&Output::Final) {
+            if settings.project.output.contains(&Output::Processed) {
                 info!("Storing FFT");
                 save(
                     name,
@@ -429,16 +423,7 @@ fn process_pair(
             kind: ProcessingKind::Fft,
             fft: None,
         }) => bail!("Missing FFT settings"),
-        None => {
-            if settings.project.output.contains(&Output::Final) {
-                if !settings.project.output.contains(&Output::Raw) {
-                    info!("Storing raw data (not processed)");
-                    save(name, "raw", &file.dest, xlabel, ylabel, &x, &y)?;
-                } else {
-                    warn!("No processing, final data is equal to raw data");
-                }
-            }
-        }
+        None => {}
     }
 
     Ok(())

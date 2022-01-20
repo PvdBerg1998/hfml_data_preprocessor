@@ -47,8 +47,8 @@ pub struct Project {
 #[serde(rename_all = "lowercase")]
 pub enum Output {
     Raw,
-    Intermediate,
-    Final,
+    Preprocessed,
+    Processed,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
