@@ -83,7 +83,7 @@ y = 1
 # Optional: preprocessing interpolation.
 # Interpolation happens as the last step in preprocessing.
 [preprocessing.interpolation]
-# Possible values: linear, Steffen splines.
+# Possible values: "linear", "steffen".
 # Steffen splines are constrained cubic splines,
 # with no oscillations between data points and a smooth first derivative.
 algorithm = "linear"
