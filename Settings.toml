@@ -25,7 +25,10 @@ title = "Test"
 # - "postinterpolation" : After preprocessing, after interpolation
 # - "processed"         : After processing
 output = ["raw", "preinterpolation", "postinterpolation", "processed"]
-# Use gnuplot for preliminary plotting
+# Use gnuplot for preliminary plotting.
+# These plots should only be used for initial investigation and checks.
+# Disabling provides a massive speedup.
+# Recommended: false
 gnuplot = false
 # Multithreading toggle
 # Recommended: true
@@ -87,7 +90,7 @@ trim_right = 32.95
 # This is of no concern for the FFT.
 # The first derivative may help removing a large low frequency peak from the FFT.
 # This is especially helpful when using boxcar ("no") windowing.
-# Recommended: 0
+# Recommended: 0 for raw, 1 for FFT
 derivative = 0
 
 # Optional: multiplication of x/y with a constant.
