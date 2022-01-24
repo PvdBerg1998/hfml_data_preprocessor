@@ -25,6 +25,8 @@ title = "Test"
 # - "postinterpolation" : After preprocessing, after interpolation
 # - "processed"         : After processing
 output = ["raw", "preinterpolation", "postinterpolation", "processed"]
+# Use gnuplot for preliminary plotting
+gnuplot = false
 # Multithreading toggle
 # Recommended: true
 threading = true

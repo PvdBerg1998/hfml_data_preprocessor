@@ -41,6 +41,7 @@ pub struct Project {
     pub title: String,
     pub files: Vec<File>,
     pub output: Vec<Output>,
+    pub gnuplot: bool,
     pub threading: bool,
 }
 

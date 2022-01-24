@@ -229,6 +229,7 @@ fn process_pair(
             &file.dest,
             xlabel,
             ylabel,
+            settings.project.gnuplot,
             xy.x(),
             xy.y(),
         )?;
@@ -296,6 +297,7 @@ fn process_pair(
             &file.dest,
             xlabel,
             ylabel,
+            settings.project.gnuplot,
             xy.x(),
             xy.y(),
         )?;
@@ -369,6 +371,7 @@ fn process_pair(
             &file.dest,
             xlabel,
             ylabel,
+            settings.project.gnuplot,
             &x,
             &y,
         )?;
@@ -483,6 +486,7 @@ fn process_pair(
                     &file.dest,
                     "Frequency",
                     "FFT Amplitude",
+                    settings.project.gnuplot,
                     &x[start_idx..end_idx],
                     &y[start_idx..end_idx],
                 )?;
@@ -505,6 +509,7 @@ fn save(
     dst: &str,
     xlabel: &str,
     ylabel: &str,
+    plot: bool,
     x: &[f64],
     y: &[f64],
 ) -> Result<()> {
@@ -522,7 +527,9 @@ fn save(
         "output/{sanitized_project}/{sanitized_name}/{sanitized_title}"
     ));
     output::store_csv(x, y, &csv_path)?;
-    output::plot_csv(&csv_path, title, xlabel, ylabel, &png_path)?;
+    if plot {
+        output::plot_csv(&csv_path, title, xlabel, ylabel, &png_path)?;
+    }
     Ok(())
 }
 
