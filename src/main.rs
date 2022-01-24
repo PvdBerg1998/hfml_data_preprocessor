@@ -475,7 +475,7 @@ fn process_pair(
 
             // Output FFT
             if settings.project.output.contains(&Output::Processed) {
-                debug!("Storing FFT for {src}:'{name}'");
+                info!("Storing FFT for {src}:'{name}'");
                 save(
                     &settings.project.title,
                     name,
