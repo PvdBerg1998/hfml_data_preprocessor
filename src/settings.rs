@@ -38,6 +38,7 @@ pub struct Settings {
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct Project {
+    pub title: String,
     pub files: Vec<File>,
     pub output: Vec<Output>,
     pub threading: bool,

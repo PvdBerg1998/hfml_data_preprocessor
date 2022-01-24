@@ -16,6 +16,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 [project]
+# Project title
+title = "Test"
 # What data to store. Reducing these steps will improve runtime speed.
 # Possible values:
 # - "raw"               : After extraction

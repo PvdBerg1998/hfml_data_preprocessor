@@ -49,6 +49,8 @@ use std::{
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 struct Args {
     settings: PathBuf,
+    #[clap(short = 'v')]
+    verbose: bool,
 }
 
 fn main() {
@@ -67,9 +69,14 @@ fn _main() -> Result<()> {
         .unwrap()
         .as_millis();
     let _ = std::fs::create_dir("log");
+    let log_level = if args.verbose {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Info
+    };
     CombinedLogger::init(vec![
         TermLogger::new(
-            LevelFilter::Debug,
+            log_level,
             ConfigBuilder::default()
                 .set_time_format_str("%H:%M:%S.%f")
                 .set_thread_mode(ThreadLogMode::Names)
@@ -79,7 +86,7 @@ fn _main() -> Result<()> {
             ColorChoice::Auto,
         ),
         WriteLogger::new(
-            LevelFilter::Info,
+            LevelFilter::Debug,
             ConfigBuilder::default()
                 .set_time_format_str("%H:%M:%S.%f")
                 .set_thread_mode(ThreadLogMode::Names)
@@ -96,6 +103,8 @@ fn _main() -> Result<()> {
     if settings.project.output.is_empty() {
         warn!("Output list is empty: no data will be saved");
     }
+
+    info!("Running project '{}'", settings.project.title);
 
     // Setup global thread pool
     rayon::ThreadPoolBuilder::new()
@@ -208,7 +217,16 @@ fn process_pair(
     // Output raw data
     if settings.project.output.contains(&Output::Raw) {
         info!("Storing raw data");
-        save(name, "raw", &file.dest, xlabel, ylabel, xy.x(), xy.y())?;
+        save(
+            &settings.project.title,
+            name,
+            "raw",
+            &file.dest,
+            xlabel,
+            ylabel,
+            xy.x(),
+            xy.y(),
+        )?;
     }
 
     // Premultiplication
@@ -267,6 +285,7 @@ fn process_pair(
     if settings.project.output.contains(&Output::PreInterpolation) {
         info!("Storing pre-interpolation data");
         save(
+            &settings.project.title,
             name,
             "pre interpolation",
             &file.dest,
@@ -339,6 +358,7 @@ fn process_pair(
     if settings.project.output.contains(&Output::PostInterpolation) {
         info!("Storing post-interpolation data");
         save(
+            &settings.project.title,
             name,
             "post interpolation",
             &file.dest,
@@ -444,6 +464,7 @@ fn process_pair(
             if settings.project.output.contains(&Output::Processed) {
                 info!("Storing FFT");
                 save(
+                    &settings.project.title,
                     name,
                     "fft",
                     &file.dest,
@@ -465,6 +486,7 @@ fn process_pair(
 }
 
 fn save(
+    project: &str,
     name: &str,
     title: &str,
     dst: &str,
@@ -473,12 +495,19 @@ fn save(
     x: &[f64],
     y: &[f64],
 ) -> Result<()> {
+    let sanitized_project = project.replace(' ', "_");
     let sanitized_name = name.replace(' ', "_");
     let sanitized_title = title.replace(' ', "_");
     let sanitized_dst = dst.replace(' ', "_");
-    let csv_path = format!("output/{sanitized_name}/{sanitized_title}/{sanitized_dst}.csv");
-    let png_path = format!("output/{sanitized_name}/{sanitized_title}/{sanitized_dst}.png");
-    let _ = std::fs::create_dir_all(format!("output/{sanitized_name}/{sanitized_title}"));
+    let csv_path = format!(
+        "output/{sanitized_project}/{sanitized_name}/{sanitized_title}/{sanitized_dst}.csv"
+    );
+    let png_path = format!(
+        "output/{sanitized_project}/{sanitized_name}/{sanitized_title}/{sanitized_dst}.png"
+    );
+    let _ = std::fs::create_dir_all(format!(
+        "output/{sanitized_project}/{sanitized_name}/{sanitized_title}"
+    ));
     output::store_csv(x, y, &csv_path)?;
     output::plot_csv(&csv_path, title, xlabel, ylabel, &png_path)?;
     Ok(())
