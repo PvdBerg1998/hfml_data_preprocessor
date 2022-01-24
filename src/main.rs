@@ -41,6 +41,7 @@ use rayon::prelude::*;
 use settings::{Interpolation, Output, Settings};
 use simplelog::*;
 use std::path::PathBuf;
+use std::time::Instant;
 use std::{
     fs::File,
     time::{SystemTime, UNIX_EPOCH},
@@ -61,6 +62,8 @@ fn main() {
 }
 
 fn _main() -> Result<()> {
+    let start = Instant::now();
+
     let args = Args::parse();
 
     // Register global logger
@@ -123,6 +126,9 @@ fn _main() -> Result<()> {
             process_file(&settings, file, &s)?;
             Ok(())
         })?;
+
+    let end = Instant::now();
+    info!("Finished in {} ms", (end - start).as_millis());
 
     Ok(())
 }
