@@ -166,11 +166,13 @@ fn process_file(settings: &Settings, file: &settings::File, s: &str) -> Result<(
             // Check if the given names actually correspond to existing data columns
             ensure!(
                 data.contains(x_name),
-                "specified x column '{x_name}' for dataset '{name}' does not exist"
+                "specified x column '{x_name}' for dataset '{name}' does not exist in file {}",
+                file.source
             );
             ensure!(
                 data.contains(y_name),
-                "specified y column '{y_name}' for dataset '{name}' does not exist"
+                "specified y column '{y_name}' for dataset '{name}' does not exist in file {}",
+                file.source
             );
 
             // Extract the columns
@@ -210,13 +212,16 @@ fn process_pair(
     mut xy: XY,
 ) -> Result<()> {
     // Check for NaN and infinities
+    let src = &file.source;
     if !xy.is_finite() {
-        warn!("Dataset '{name}' contains non-finite values");
+        warn!("Dataset {src}:'{name}' contains non-finite values");
     }
+    let n_log2 = (xy.len() as f64).log2();
+    debug!("Dataset {src}:'{name}' length: ~2^{n_log2:.2}");
 
     // Output raw data
     if settings.project.output.contains(&Output::Raw) {
-        info!("Storing raw data");
+        debug!("Storing raw data for {src}:'{name}'");
         save(
             &settings.project.title,
             name,
@@ -233,22 +238,22 @@ fn process_pair(
     let mx = settings.preprocessing.prefactor.x;
     let my = settings.preprocessing.prefactor.y;
     if mx != 1.0 {
-        info!("Multiplying x by {mx}");
+        debug!("Multiplying {src}:'{name}' x by {mx}");
         xy.multiply_x(mx);
     }
     if my != 1.0 {
-        info!("Multiplying y by {my}");
+        debug!("Multiplying {src}:'{name}' y by {my}");
         xy.multiply_y(my);
     }
 
     // 1/x
     if settings.preprocessing.invert_x {
-        info!("Inverting x");
+        debug!("Inverting {src}:'{name}' x");
         xy.invert_x();
     }
 
     // Monotonicity
-    info!("Making dataset monotonic");
+    debug!("Making {src}:'{name}' monotonic");
     let mut xy = xy.into_monotonic();
 
     // Trimming
@@ -270,20 +275,20 @@ fn process_pair(
     );
     ensure!(
         xy.min_x() <= trim_a,
-        "Left trim {trim_a} is outside domain {:?} for dataset '{name}'",
+        "Left trim {trim_a} is outside domain {:?} for {src}:'{name}'",
         xy.min_x()
     );
     ensure!(
         xy.max_x() >= trim_b,
-        "Right trim {trim_b} is outside domain {:?} for dataset '{name}'",
+        "Right trim {trim_b} is outside domain {:?} for {src}:'{name}'",
         xy.max_x()
     );
-    info!("Data domain: [{trim_a},{trim_b}]");
+    debug!("Data domain: [{trim_a},{trim_b}]");
     xy.trim(trim_a, trim_b);
 
     // Output preprocessed data
     if settings.project.output.contains(&Output::PreInterpolation) {
-        info!("Storing pre-interpolation data");
+        debug!("Storing pre-interpolation data for {src}:'{name}'");
         save(
             &settings.project.title,
             name,
@@ -304,7 +309,7 @@ fn process_pair(
             // - log2("2^n")
             // - "min": use minimum dx in dataset
             let n_interp = if n == "min" {
-                debug!("Calculating minimum delta x");
+                debug!("Calculating minimum delta x for {src}:'{name}'");
 
                 // Loop over x, compare neighbours, find smallest interval
                 match xy
@@ -320,7 +325,7 @@ fn process_pair(
                         let n = xy.domain_len() / dx;
                         n.ceil() as _
                     }
-                    None => bail!("Unable to determine minimum delta x"),
+                    None => bail!("Unable to determine minimum delta x for {src}:'{name}'"),
                 }
             } else {
                 match n.parse::<u64>() {
@@ -341,7 +346,7 @@ fn process_pair(
                 Derivative::Second => "2nd derivative",
             };
 
-            info!("Interpolating {deriv_str} at {n_interp} points using {algorithm} interpolation");
+            info!("Interpolating {src}:'{name}' using {deriv_str} at {n_interp} points using {algorithm} interpolation");
             let dx = xy.domain_len() / n_interp as f64;
             let x_eval = (0..n_interp)
                 .map(|i| (i as f64) * dx + xy.min_x())
@@ -356,7 +361,7 @@ fn process_pair(
 
     // Output post interpolation data
     if settings.project.output.contains(&Output::PostInterpolation) {
-        info!("Storing post-interpolation data");
+        debug!("Storing post-interpolation data for {src}:'{name}'");
         save(
             &settings.project.title,
             name,
@@ -398,22 +403,27 @@ fn process_pair(
             if fft.center {
                 let mean = stats::mean(&y);
 
-                info!("Removing mean value {mean}");
+                debug!("Removing mean value {mean} from {src}:'{name}'");
                 y.iter_mut().for_each(|y| {
                     *y -= mean;
                 });
             }
             if fft.hann {
-                info!("Applying Hann window");
+                debug!("Applying Hann window to {src}:'{name}'");
                 y.iter_mut().enumerate().for_each(|(i, y)| {
-                    *y *= (i as f64 * std::f64::consts::PI / n_data as f64)
+                    *y *= (i as f64 * std::f64::consts::PI / (n_data - 1) as f64)
                         .sin()
                         .powi(2);
                 });
+
+                // Avoid numerical error and leaking at the edges
+                *y.first_mut().unwrap() = 0.0;
+                *y.last_mut().unwrap() = 0.0;
             }
+
             if n_pad > 0 {
-                info!(
-                    "Zero padding by {n_pad} to reach 2^{desired_n_log2} points total length ({} MB)",
+                debug!(
+                    "Zero padding {src}:'{name}' by {n_pad} to reach 2^{desired_n_log2} points total length ({} MB)",
                     desired_n * std::mem::size_of::<f64>() / 1024usize.pow(2)
                 );
                 y.resize(desired_n, 0.0);
@@ -436,10 +446,13 @@ fn process_pair(
                 if cufft::gpu_count() == 0 {
                     bail!("No CUDA capable GPUs available");
                 }
-                info!("Computing FFT on GPU '{}'", cufft::first_gpu_name()?);
+                info!(
+                    "Computing FFT on GPU '{}' for {src}:'{name}'",
+                    cufft::first_gpu_name()?
+                );
                 cufft::fft64_norm(&y)?
             } else {
-                info!("Computing FFT on CPU");
+                info!("Computing FFT on CPU for {src}:'{name}'");
                 fft::fft64_packed(&mut y)?;
                 fft::fft64_unpack_norm(&y)
             };
@@ -448,7 +461,7 @@ fn process_pair(
             let lower_cutoff = fft.truncate_lower.unwrap_or(0.0);
             let upper_cutoff = fft.truncate_upper.unwrap_or(f64::INFINITY);
             if lower_cutoff != 0.0 || upper_cutoff.is_finite() {
-                info!("Truncating FFT to {lower_cutoff}..{upper_cutoff} 'Hz'");
+                debug!("Truncating FFT to {lower_cutoff}..{upper_cutoff} 'Hz' for {src}:'{name}'");
             }
 
             // Sampled frequencies : k/(N dt)
@@ -462,7 +475,7 @@ fn process_pair(
 
             // Output FFT
             if settings.project.output.contains(&Output::Processed) {
-                info!("Storing FFT");
+                debug!("Storing FFT for {src}:'{name}'");
                 save(
                     &settings.project.title,
                     name,

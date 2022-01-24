@@ -191,6 +191,10 @@ impl XY {
 
 #[allow(dead_code)]
 impl MonotonicXY {
+    pub fn len(&self) -> usize {
+        self.x.len()
+    }
+
     pub fn min_x(&self) -> f64 {
         *self.x.first().unwrap()
     }

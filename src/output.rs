@@ -56,6 +56,7 @@ set ylabel '{ylabel}' font ',16'
 set autoscale xy
 set key off
 plot '{csv}' using 1:2 with lines lw 2
+set output
 exit"
     );
 
