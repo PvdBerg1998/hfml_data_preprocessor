@@ -8,6 +8,7 @@ version = "0.1.0"
 [dependencies]
 anyhow = "1.0.52"
 cufft_rust = {version = "*", path = "../cufft_rust"}
+clap = {version = "3.0", features = ["derive"]}
 fast-float = "0.2.0"
 float-ord = "0.3.2"
 gsl_rust = {version = "*", path = "../gsl_rust"}

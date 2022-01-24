@@ -28,6 +28,7 @@ use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::ensure;
 use anyhow::Result;
+use clap::Parser;
 use cufft_rust as cufft;
 use data::Data;
 use data::XY;
@@ -39,10 +40,16 @@ use log::*;
 use rayon::prelude::*;
 use settings::{Interpolation, Output, Settings};
 use simplelog::*;
+use std::path::PathBuf;
 use std::{
     fs::File,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+#[derive(Clone, Debug, PartialEq, Eq, Parser)]
+struct Args {
+    settings: PathBuf,
+}
 
 fn main() {
     gsl_rust::disable_error_handler(); // We handle errors ourselves and this aborts the program.
@@ -52,6 +59,8 @@ fn main() {
 }
 
 fn _main() -> Result<()> {
+    let args = Args::parse();
+
     // Register global logger
     let unix = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -82,7 +91,7 @@ fn _main() -> Result<()> {
 
     // Parse settings
     let settings =
-        settings::load("settings.toml").map_err(|e| anyhow!("Failed to load settings: {e}"))?;
+        settings::load(args.settings).map_err(|e| anyhow!("Failed to load settings: {e}"))?;
     debug!("Settings: {settings:#?}");
     if settings.project.output.is_empty() {
         warn!("Output list is empty: no data will be saved");

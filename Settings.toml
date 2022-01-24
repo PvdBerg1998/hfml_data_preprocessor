@@ -22,7 +22,7 @@
 # - "preinterpolation"  : After preprocessing, before interpolation
 # - "postinterpolation" : After preprocessing, after interpolation
 # - "processed"         : After processing
-output = ["raw", "processed"]
+output = ["raw", "preinterpolation", "postinterpolation", "processed"]
 # Multithreading toggle
 # Recommended: true
 threading = true
@@ -84,7 +84,7 @@ trim_right = 32.95
 # The first derivative may help removing a large low frequency peak from the FFT.
 # This is especially helpful when using boxcar ("no") windowing.
 # Recommended: 0
-derivative = 1
+derivative = 0
 
 # Optional: multiplication of x/y with a constant.
 # This happens _before_ trimming and inversion.
@@ -129,11 +129,11 @@ center = false
 # Recommended: true when your hardware supports it.
 cuda = true
 # Apply Hann window
-hann = false
+hann = true
 # Optional: frequency space truncation
 # This has units of 1/x.
-truncate_lower = 100
-truncate_upper = 2000
+truncate_lower = 0
+truncate_upper = 10000
 # Zero padded data length.
 # Increasing this will result in a smoother spectrum with no data loss.
 # NB. This length _includes_ the original data.
