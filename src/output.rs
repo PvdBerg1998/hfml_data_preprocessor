@@ -45,6 +45,10 @@ pub fn plot_csv<P: AsRef<Path> + Display>(
     ylabel: &str,
     out: P,
 ) -> Result<()> {
+    let title = title.replace('_', r"\\\_");
+    let xlabel = xlabel.replace('_', r"\\\_");
+    let ylabel = ylabel.replace('_', r"\\\_");
+
     // Build gnuplot source
     let source = format!(
         "\
