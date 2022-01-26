@@ -186,6 +186,7 @@ fn process_file(settings: &Settings, file: &settings::File, s: &str) -> Result<(
             let xy = data.clone_xy(x_name, y_name);
 
             // Prepare x/y labels
+            let raw_xlabel = x_name.to_owned();
             let xlabel = if settings.preprocessing.invert_x {
                 format!("1/{x_name}")
             } else {
@@ -193,7 +194,14 @@ fn process_file(settings: &Settings, file: &settings::File, s: &str) -> Result<(
             };
             let ylabel = y_name.to_owned();
 
-            Ok((file.to_owned(), name.to_owned(), xlabel, ylabel, xy))
+            Ok((
+                file.to_owned(),
+                name.to_owned(),
+                raw_xlabel,
+                xlabel,
+                ylabel,
+                xy,
+            ))
         })
         .filter_map(|res| match res {
             Ok(parameters) => Some(parameters),
@@ -209,8 +217,8 @@ fn process_file(settings: &Settings, file: &settings::File, s: &str) -> Result<(
     // as the threadpool uses a work stealing technique
     parameters
         .into_par_iter()
-        .try_for_each(|(file, name, xlabel, ylabel, xy)| {
-            process_pair(settings, &file, &name, &xlabel, &ylabel, xy)
+        .try_for_each(|(file, name, raw_xlabel, xlabel, ylabel, xy)| {
+            process_pair(settings, &file, &name, &raw_xlabel, &xlabel, &ylabel, xy)
         })?;
 
     Ok(())
@@ -220,6 +228,7 @@ fn process_pair(
     settings: &Settings,
     file: &settings::File,
     name: &str,
+    raw_xlabel: &str,
     xlabel: &str,
     ylabel: &str,
     mut xy: XY,
@@ -240,7 +249,7 @@ fn process_pair(
             name,
             "raw",
             &file.dest,
-            xlabel,
+            raw_xlabel,
             ylabel,
             settings.project.gnuplot,
             xy.x(),
