@@ -195,7 +195,14 @@ fn process_file(settings: &Settings, file: &settings::File, s: &str) -> Result<(
 
             Ok((file.to_owned(), name.to_owned(), xlabel, ylabel, xy))
         })
-        .collect::<Result<Vec<_>>>()?;
+        .filter_map(|res| match res {
+            Ok(parameters) => Some(parameters),
+            Err(e) => {
+                error!("Skipping pair: {e}");
+                None
+            }
+        })
+        .collect::<Vec<_>>();
 
     // Process data pairs in parallel
     // It doesn't matter that we may already be parallelized,
