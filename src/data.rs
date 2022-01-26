@@ -250,8 +250,21 @@ impl MonotonicXY {
     /// ### Panics
     /// - When the width is zero
     pub fn median_filter(&mut self, width: usize) {
-        let y = filter::median(width as usize, &self.y).unwrap();
-        self.y = y;
+        filter::median(width as usize, &mut self.y).unwrap();
+    }
+
+    /// Applies an impulse filter of given width and tuning parameter.
+    /// ### Panics
+    /// - When the width is zero
+    /// - The tuning parameter is negative
+    pub fn impulse_filter(&mut self, width: usize, tuning: f64) {
+        filter::impulse(
+            width,
+            tuning,
+            filter::ImpulseFilterScale::SnStatistic,
+            &mut self.y,
+        )
+        .unwrap();
     }
 
     /// Removes a range of data

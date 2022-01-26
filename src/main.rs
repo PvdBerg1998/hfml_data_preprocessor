@@ -274,12 +274,19 @@ fn process_pair(
     debug!("Making {src}:'{name}' monotonic");
     let mut xy = xy.into_monotonic();
 
-    // Median filtering
+    // Impulse filtering
     // Do this before trimming, such that edge artifacts may be cut off afterwards
-    if settings.preprocessing.median_filter > 0 {
-        let width = settings.preprocessing.median_filter;
-        debug!("Applying median filter of width {width} to {src}:'{name}'");
-        xy.median_filter(width as usize);
+    if settings.preprocessing.impulse_filter > 0 {
+        let width = settings.preprocessing.impulse_filter;
+        let tuning = settings.preprocessing.impulse_tuning;
+
+        ensure!(
+            tuning >= 0.0,
+            "Impulse filter with negative tuning makes no sense"
+        );
+
+        debug!("Applying impulse filter of width {width} and tuning {tuning} to {src}:'{name}'");
+        xy.impulse_filter(width as usize, tuning);
     }
 
     // Masking

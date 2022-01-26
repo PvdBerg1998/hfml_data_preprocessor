@@ -90,7 +90,9 @@ pub struct Preprocessing {
     pub trim_left: Option<f64>,
     pub trim_right: Option<f64>,
     #[serde(default)]
-    pub median_filter: u32,
+    pub impulse_filter: u32,
+    #[serde(default)]
+    pub impulse_tuning: f64,
     #[serde(default)]
     pub derivative: u32,
 }

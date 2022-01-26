@@ -95,10 +95,13 @@ trim_right = 32.95
 # This is especially helpful when using boxcar ("no") windowing.
 # Recommended: 0 for raw, 1 for FFT
 derivative = 0
-# Optional: median filtering
-# Value determines total median window width
+# Optional: impulse filtering
+# Value determines total impulse window width
 # Setting to zero does nothing.
-median_filter = 5
+impulse_filter = 0
+# Impulse tuning parameter relaxes impulse filter
+# 0 results in a median filter, inf results in an identity filter.
+impulse_tuning = 1
 
 # Optional: multiplication of x/y with a constant.
 # This happens _before_ trimming and inversion.
