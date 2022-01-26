@@ -18,6 +18,7 @@
 
 use anyhow::ensure;
 use anyhow::Error;
+use gsl_rust::filter;
 use gsl_rust::sorting;
 use std::collections::HashMap;
 use std::fmt;
@@ -243,6 +244,14 @@ impl MonotonicXY {
         });
         self.x.reverse();
         self.y.reverse();
+    }
+
+    /// Applies a median filter of given width.
+    /// ### Panics
+    /// - When the width is zero
+    pub fn median_filter(&mut self, width: usize) {
+        let y = filter::median(width as usize, &self.y).unwrap();
+        self.y = y;
     }
 
     /// Removes a range of data

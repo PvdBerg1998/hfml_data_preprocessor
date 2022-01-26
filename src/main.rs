@@ -34,7 +34,6 @@ use cufft_rust as cufft;
 use data::Data;
 use data::XY;
 use gsl_rust::fft;
-use gsl_rust::filter::median_filter;
 use gsl_rust::interpolation::interpolate_monotonic;
 use gsl_rust::interpolation::Derivative;
 use gsl_rust::stats;
@@ -280,7 +279,7 @@ fn process_pair(
     if settings.preprocessing.median_filter > 0 {
         let width = settings.preprocessing.median_filter;
         debug!("Applying median filter of width {width} to {src}:'{name}'");
-        median_filter(width as usize, xy.y_mut())?;
+        xy.median_filter(width as usize);
     }
 
     // Masking
