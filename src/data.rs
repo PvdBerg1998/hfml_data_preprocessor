@@ -16,9 +16,10 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+use anyhow::ensure;
+use anyhow::Error;
 use gsl_rust::sorting;
 use std::collections::HashMap;
-use std::convert::Infallible;
 use std::fmt;
 use std::str::FromStr;
 
@@ -28,7 +29,7 @@ pub struct Data {
 }
 
 impl FromStr for Data {
-    type Err = Infallible;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Values are tab separated
@@ -38,6 +39,8 @@ impl FromStr for Data {
             .flatten()
             .take_while(|&entry| fast_float::parse::<f64, _>(entry).is_err())
             .collect::<Vec<_>>();
+
+        ensure!(!has_dup(&headers), "header contains duplicate values");
 
         // Split data into columns
         let mut data = HashMap::new();
@@ -54,6 +57,15 @@ impl FromStr for Data {
 
         Ok(Data { data })
     }
+}
+
+fn has_dup<T: PartialEq>(slice: &[T]) -> bool {
+    for i in 1..slice.len() {
+        if slice[i..].contains(&slice[i - 1]) {
+            return true;
+        }
+    }
+    false
 }
 
 impl fmt::Display for Data {
