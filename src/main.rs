@@ -22,6 +22,7 @@ mod data;
 mod output;
 mod settings;
 
+use crate::settings::Mask;
 use crate::settings::Processing;
 use crate::settings::ProcessingKind;
 use anyhow::anyhow;
@@ -104,7 +105,7 @@ fn _main() -> Result<()> {
         settings::load(args.settings).map_err(|e| anyhow!("Failed to load settings: {e}"))?;
     debug!("Settings: {settings:#?}");
     if settings.project.output.is_empty() {
-        warn!("Output list is empty: no data will be saved");
+        warn!("Output list is empty");
     }
 
     info!("Running project '{}'", settings.project.title);
@@ -251,7 +252,7 @@ fn process_pair(
             &file.dest,
             raw_xlabel,
             ylabel,
-            settings.project.gnuplot,
+            settings.project.gnuplot.contains(&Output::Raw),
             xy.x(),
             xy.y(),
         )?;
@@ -269,33 +270,37 @@ fn process_pair(
         xy.multiply_y(my);
     }
 
-    // 1/x
-    if settings.preprocessing.invert_x {
-        debug!("Inverting {src}:'{name}' x");
-        xy.invert_x();
-    }
-
     // Monotonicity
     debug!("Making {src}:'{name}' monotonic");
     let mut xy = xy.into_monotonic();
 
+    // Masking
+    for &Mask { left, right } in &file.masks {
+        ensure!(
+            left >= xy.min_x(),
+            "Mask {left} is outside domain {:?} for {src}:'{name}'",
+            xy.min_x()
+        );
+        ensure!(
+            right <= xy.max_x(),
+            "Mask {right} is outside domain {:?} for {src}:'{name}'",
+            xy.max_x()
+        );
+
+        debug!("Masking {src}:'{name}' from {} to {}", left, right);
+        xy.mask(left, right);
+    }
+
     // Trimming
-    let trim_a = if settings.preprocessing.invert_x {
-        settings.preprocessing.trim_right.map(|x| 1.0 / x)
-    } else {
-        settings.preprocessing.trim_left
-    }
-    .unwrap_or(xy.min_x());
-    let trim_b = if settings.preprocessing.invert_x {
-        settings.preprocessing.trim_left.map(|x| 1.0 / x)
-    } else {
-        settings.preprocessing.trim_right
-    }
-    .unwrap_or(xy.max_x());
-    ensure!(
-        settings.preprocessing.trim_left < settings.preprocessing.trim_right,
-        "Trimmed domain is empty or negative"
-    );
+    let trim_a = settings
+        .preprocessing
+        .trim_left
+        .unwrap_or_else(|| xy.min_x());
+    let trim_b = settings
+        .preprocessing
+        .trim_right
+        .unwrap_or_else(|| xy.max_x());
+    ensure!(trim_a < trim_b, "Trimmed domain is empty or negative");
     ensure!(
         xy.min_x() <= trim_a,
         "Left trim {trim_a} is outside domain {:?} for {src}:'{name}'",
@@ -309,6 +314,12 @@ fn process_pair(
     debug!("Data domain: [{trim_a},{trim_b}]");
     xy.trim(trim_a, trim_b);
 
+    // 1/x
+    if settings.preprocessing.invert_x {
+        debug!("Inverting {src}:'{name}' x");
+        xy.invert_x();
+    }
+
     // Output preprocessed data
     if settings.project.output.contains(&Output::PreInterpolation) {
         debug!("Storing pre-interpolation data for {src}:'{name}'");
@@ -319,7 +330,7 @@ fn process_pair(
             &file.dest,
             xlabel,
             ylabel,
-            settings.project.gnuplot,
+            settings.project.gnuplot.contains(&Output::PreInterpolation),
             xy.x(),
             xy.y(),
         )?;
@@ -393,7 +404,10 @@ fn process_pair(
             &file.dest,
             xlabel,
             ylabel,
-            settings.project.gnuplot,
+            settings
+                .project
+                .gnuplot
+                .contains(&Output::PostInterpolation),
             &x,
             &y,
         )?;
@@ -508,7 +522,7 @@ fn process_pair(
                     &file.dest,
                     "Frequency",
                     "FFT Amplitude",
-                    settings.project.gnuplot,
+                    settings.project.gnuplot.contains(&Output::Processed),
                     &x[start_idx..end_idx],
                     &y[start_idx..end_idx],
                 )?;

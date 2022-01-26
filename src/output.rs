@@ -16,7 +16,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-use anyhow::bail;
+use anyhow::ensure;
 use anyhow::Result;
 use std::fmt::Display;
 use std::io::Write as IoWrite;
@@ -35,6 +35,7 @@ pub fn store_csv<P: AsRef<Path>>(x: &[f64], y: &[f64], path: P) -> Result<()> {
         let y = y_buf.format(*y);
         writeln!(&mut w, "{x},{y}")?;
     }
+    w.flush()?;
     Ok(())
 }
 
@@ -49,15 +50,17 @@ pub fn plot_csv<P: AsRef<Path> + Display>(
     let xlabel = xlabel.replace('_', r"\_");
     let ylabel = ylabel.replace('_', r"\_");
 
+    let _ = std::fs::remove_file(&out);
+
     // Build gnuplot source
     let source = format!(
         "\
-set terminal pngcairo size 640,480
-set datafile separator ','
+set terminal png size 640,480
 set output '{out}'
-set title '{title}' font ',24'
-set xlabel '{xlabel}' font ',16'
-set ylabel '{ylabel}' font ',16'
+set datafile separator ','
+set title '{title}'
+set xlabel '{xlabel}'
+set ylabel '{ylabel}'
 set autoscale xy
 set key off
 plot '{csv}' using 1:2 with lines lw 2
@@ -71,11 +74,11 @@ exit"
         .stdout(Stdio::null())
         .spawn()?;
     let mut stdin = child.stdin.take().expect("piped stdin");
+
     stdin.write_all(source.as_bytes())?;
     drop(stdin);
-    if child.wait()?.success() {
-        Ok(())
-    } else {
-        bail!("gnuplot returned error code");
-    }
+
+    ensure!(child.wait()?.success(), "gnuplot returned error code");
+
+    Ok(())
 }

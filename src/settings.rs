@@ -41,7 +41,7 @@ pub struct Project {
     pub title: String,
     pub files: Vec<File>,
     pub output: Vec<Output>,
-    pub gnuplot: bool,
+    pub gnuplot: Vec<Output>,
     pub threading: bool,
 }
 
@@ -54,10 +54,18 @@ pub enum Output {
     Processed,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct File {
     pub source: String,
     pub dest: String,
+    #[serde(default)]
+    pub masks: Vec<Mask>,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Deserialize)]
+pub struct Mask {
+    pub left: f64,
+    pub right: f64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]

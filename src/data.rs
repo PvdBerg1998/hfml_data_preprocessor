@@ -175,12 +175,6 @@ impl XY {
         });
     }
 
-    pub fn invert_x(&mut self) {
-        self.x.iter_mut().for_each(|x| {
-            *x = 1.0 / *x;
-        });
-    }
-
     pub fn into_monotonic(self) -> MonotonicXY {
         let XY { mut x, mut y } = self;
 
@@ -233,6 +227,36 @@ impl MonotonicXY {
 
     pub fn take_xy(self) -> (Vec<f64>, Vec<f64>) {
         (self.x, self.y)
+    }
+
+    pub fn invert_x(&mut self) {
+        self.x.iter_mut().for_each(|x| {
+            *x = 1.0 / *x;
+        });
+        self.x.reverse();
+        self.y.reverse();
+    }
+
+    /// Removes a range of data
+    /// ### Panics
+    /// - When a boundary is higher than the largest x value in the data
+    pub fn mask(&mut self, lower_x: f64, upper_x: f64) {
+        let lower = self.x.iter().position(|&x| x >= lower_x).unwrap();
+        let upper = self.x.iter().position(|&x| x >= upper_x).unwrap();
+
+        let mut i = 0usize;
+        self.x.retain(|_| {
+            let remove = (lower..=upper).contains(&i);
+            i += 1;
+            !remove
+        });
+
+        let mut i = 0usize;
+        self.y.retain(|_| {
+            let remove = (lower..=upper).contains(&i);
+            i += 1;
+            !remove
+        });
     }
 
     /// Truncates the stored values to be inside or equal to the given boundaries

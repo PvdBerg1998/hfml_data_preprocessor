@@ -18,7 +18,7 @@
 [project]
 # Project title
 title = "Test"
-# What data to store. Reducing these steps will improve runtime speed.
+# What data to output. Reducing these steps will improve runtime speed.
 # Possible values:
 # - "raw"               : After extraction
 # - "preinterpolation"  : After preprocessing, before interpolation
@@ -26,10 +26,12 @@ title = "Test"
 # - "processed"         : After processing
 output = ["raw", "preinterpolation", "postinterpolation", "processed"]
 # Use gnuplot for preliminary plotting.
+# NB. It seems that gnuplot may be broken on Windows.
 # These plots should only be used for initial investigation and checks.
 # Disabling provides a massive speedup.
-# Recommended: false
-gnuplot = false
+# Possible values: see output.
+# Recommended: "raw"
+gnuplot = ["raw", "preinterpolation", "postinterpolation", "processed"]
 # Multithreading toggle
 # Recommended: true
 threading = true
@@ -40,6 +42,8 @@ threading = true
 source = "file.013.dat"
 # Output name. Choose something descriptive (sample, temperature, etc.)
 dest = "measurement_013"
+# Optional: mask bad data per file
+masks = [{left = 12, right = 15}]
 
 #
 # HEADER RENAMING
@@ -78,7 +82,6 @@ y = "Vxy"
 # Optional: x inversion, i.e. x -> 1/x
 invert_x = true
 # Optional: x domain trimming
-# When inverting x, these values are automatically inverted as well for convenience.
 trim_left = 12
 trim_right = 32.95
 # Optional: derivative
@@ -134,7 +137,7 @@ center = false
 # Use CUDA FFT backend. Requires a modern NVIDIA GPU.
 # This may result in a dramatic speedup of the FFT step for large lengths (see zero_pad).
 # Recommended: true when your hardware supports it.
-cuda = true
+cuda = false
 # Apply Hann window
 hann = true
 # Optional: frequency space truncation
