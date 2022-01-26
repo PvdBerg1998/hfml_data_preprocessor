@@ -34,6 +34,7 @@ use cufft_rust as cufft;
 use data::Data;
 use data::XY;
 use gsl_rust::fft;
+use gsl_rust::filter::median_filter;
 use gsl_rust::interpolation::interpolate_monotonic;
 use gsl_rust::interpolation::Derivative;
 use gsl_rust::stats;
@@ -274,6 +275,14 @@ fn process_pair(
     debug!("Making {src}:'{name}' monotonic");
     let mut xy = xy.into_monotonic();
 
+    // Median filtering
+    // Do this before trimming, such that edge artifacts may be cut off afterwards
+    if settings.preprocessing.median_filter > 0 {
+        let width = settings.preprocessing.median_filter;
+        debug!("Applying median filter of width {width} to {src}:'{name}'");
+        median_filter(width as usize, xy.y_mut())?;
+    }
+
     // Masking
     for &Mask { left, right } in &file.masks {
         ensure!(
@@ -315,6 +324,7 @@ fn process_pair(
     xy.trim(trim_a, trim_b);
 
     // 1/x
+    // Do this last because it makes the domain more difficult to handle
     if settings.preprocessing.invert_x {
         debug!("Inverting {src}:'{name}' x");
         xy.invert_x();

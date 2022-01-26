@@ -193,6 +193,10 @@ impl XY {
     pub fn y(&self) -> &[f64] {
         &self.y
     }
+
+    pub fn y_mut(&mut self) -> &mut [f64] {
+        &mut self.y
+    }
 }
 
 #[allow(dead_code)]
@@ -215,6 +219,10 @@ impl MonotonicXY {
 
     pub fn y(&self) -> &[f64] {
         &self.y
+    }
+
+    pub fn y_mut(&mut self) -> &mut [f64] {
+        &mut self.y
     }
 
     pub fn domain_len(&self) -> f64 {
