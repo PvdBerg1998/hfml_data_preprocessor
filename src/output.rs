@@ -52,7 +52,7 @@ pub fn plot_csv<P: AsRef<Path> + Display>(
     // Build gnuplot source
     let source = format!(
         "\
-set terminal pngcairo size 1920,1080
+set terminal pngcairo size 640,480
 set datafile separator ','
 set output '{out}'
 set title '{title}' font ',24'
