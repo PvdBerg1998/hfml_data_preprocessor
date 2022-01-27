@@ -65,6 +65,10 @@ pub struct File {
     // File specific prefactor override
     pub prefactor_x: Option<f64>,
     pub prefactor_y: Option<f64>,
+    #[serde(default)]
+    pub impulse_filter: u32,
+    #[serde(default = "one")]
+    pub impulse_tuning: f64,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize)]
@@ -98,10 +102,6 @@ pub struct Preprocessing {
     pub trim_left: Option<f64>,
     pub trim_right: Option<f64>,
     #[serde(default)]
-    pub impulse_filter: u32,
-    #[serde(default = "one")]
-    pub impulse_tuning: f64,
-    #[serde(default)]
     pub derivative: u32,
 }
 
@@ -134,6 +134,7 @@ impl Into<gsl_rust::interpolation::Algorithm> for InterpolationAlgorithm {
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct Fft {
     pub zero_pad: String,
+    #[serde(default = "_true")]
     pub cuda: bool,
     #[serde(default)]
     pub center: bool,

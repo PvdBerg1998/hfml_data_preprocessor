@@ -1,0 +1,54 @@
+# hfml_data_preprocessor settings file template.
+#
+#     Copyright (C) 2021 Pim van den Berg
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+[project]
+title = "Test"
+
+[[project.files]]
+dest = "measurement_013"
+source = "file.013.dat"
+
+[rename]
+"B(T)" = "B"
+"Field" = "B"
+"S1_Vxx_8_13_x" = "Vxx"
+"S1_Vxy_9_13_x" = "Vxy"
+"V_37_x" = "Vxy"
+"V_68_x" = "Vxx"
+
+[extract.Vxx]
+x = "B"
+y = "Vxx"
+
+[extract.Vxy]
+x = "B"
+y = "Vxy"
+
+[preprocessing]
+derivative = 1
+interpolation = "linear"
+interpolation_n = "min"
+invert_x = true
+prefactor_x = 1
+prefactor_y = 1
+trim_left = 12
+trim_right = 32.95
+
+[fft]
+truncate_lower = 0
+truncate_upper = 10000
+zero_pad = "2^22"

@@ -75,6 +75,20 @@ masks = [
 prefactor_x = 1
 prefactor_y = 1
 
+# Optional: impulse filtering
+# Value determines total impulse window width
+# Setting to zero is equal to not defining.
+#
+# Default: no filtering.
+impulse_filter = 0
+
+# Optional: impulse tuning parameter.
+# Tuning parameter indicates how far a point has to be,
+# relative to the "average" window value, to be removed.
+#
+# Default: 1
+impulse_tuning = 1
+
 #
 # HEADER RENAMING
 #
@@ -118,20 +132,6 @@ y = "Vxy"
 # Default: full domain.
 trim_left = 12
 trim_right = 32.95
-
-# Optional: impulse filtering
-# Value determines total impulse window width
-# Setting to zero is equal to not defining.
-#
-# Default: no filtering.
-impulse_filter = 0
-
-# Optional: impulse tuning parameter.
-# Tuning parameter indicates how far a point has to be,
-# relative to the "average" window value, to be removed.
-#
-# Default: 1
-impulse_tuning = 1
 
 # Optional: multiplication of x/y with a constant.
 # This happens _before_ trimming, masking and inversion (mostly important for negative factors).

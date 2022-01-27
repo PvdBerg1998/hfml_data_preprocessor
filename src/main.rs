@@ -280,9 +280,9 @@ fn process_pair(
 
     // Impulse filtering
     // Do this before trimming, such that edge artifacts may be cut off afterwards
-    if settings.preprocessing.impulse_filter > 0 {
-        let width = settings.preprocessing.impulse_filter;
-        let tuning = settings.preprocessing.impulse_tuning;
+    if file.impulse_filter > 0 {
+        let width = file.impulse_filter;
+        let tuning = file.impulse_tuning;
 
         ensure!(
             tuning >= 0.0,
@@ -505,7 +505,7 @@ fn process_pair(
             }
 
             if cufft::gpu_count() == 0 {
-                error!("No CUDA capable GPUs available, using CPU instead");
+                warn!("No CUDA capable GPUs available, using CPU instead");
                 false
             } else {
                 info!(
