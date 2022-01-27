@@ -21,8 +21,8 @@ title = "Test"
 # What data to output. Reducing these steps will improve runtime speed.
 # Possible values:
 # - "raw"               : After extraction
-# - "preinterpolation"  : After preprocessing, before interpolation
-# - "postinterpolation" : After preprocessing, after interpolation
+# - "preinterpolation"  : After preprocessing, before interpolation and inversion
+# - "postinterpolation" : After preprocessing, after interpolation and inversion
 # - "processed"         : After processing
 output = ["raw", "preinterpolation", "postinterpolation", "processed"]
 # Use gnuplot for preliminary plotting.

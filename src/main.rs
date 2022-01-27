@@ -329,13 +329,6 @@ fn process_pair(
     debug!("Data domain: [{trim_a},{trim_b}]");
     xy.trim(trim_a, trim_b);
 
-    // 1/x
-    // Do this last because it makes the domain more difficult to handle
-    if settings.preprocessing.invert_x {
-        debug!("Inverting {src}:'{name}' x");
-        xy.invert_x();
-    }
-
     // Output preprocessed data
     if settings.project.output.contains(&Output::PreInterpolation) {
         debug!("Storing pre-interpolation data for {src}:'{name}'");
@@ -350,6 +343,13 @@ fn process_pair(
             xy.x(),
             xy.y(),
         )?;
+    }
+
+    // 1/x
+    // Do this last because it makes the domain more difficult to handle
+    if settings.preprocessing.invert_x {
+        debug!("Inverting {src}:'{name}' x");
+        xy.invert_x();
     }
 
     // Interpolation
