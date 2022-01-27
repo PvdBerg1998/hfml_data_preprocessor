@@ -337,7 +337,7 @@ fn process_pair(
             name,
             "pre interpolation",
             &file.dest,
-            xlabel,
+            raw_xlabel,
             ylabel,
             settings.project.gnuplot.contains(&Output::PreInterpolation),
             xy.x(),
