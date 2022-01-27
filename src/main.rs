@@ -493,18 +493,25 @@ fn process_pair(
             );
 
             // Execute FFT
-            let y = if fft.cuda {
+            let use_cuda = if fft.cuda {
                 if desired_n_log2 < 10 {
                     warn!("Small FFT sizes may be faster when run on a CPU");
                 }
 
                 if cufft::gpu_count() == 0 {
-                    bail!("No CUDA capable GPUs available");
+                    error!("No CUDA capable GPUs available, using CPU instead");
+                    false
+                } else {
+                    info!(
+                        "Computing FFT on GPU '{}' for {src}:'{name}'",
+                        cufft::first_gpu_name()?
+                    );
+                    true
                 }
-                info!(
-                    "Computing FFT on GPU '{}' for {src}:'{name}'",
-                    cufft::first_gpu_name()?
-                );
+            } else {
+                false
+            };
+            let y = if use_cuda {
                 cufft::fft64_norm(&y)?
             } else {
                 info!("Computing FFT on CPU for {src}:'{name}'");
