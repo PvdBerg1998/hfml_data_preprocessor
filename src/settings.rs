@@ -17,7 +17,6 @@
 */
 
 use anyhow::Result;
-use num_traits::one;
 use serde::Deserialize;
 use std::fmt;
 use std::{collections::HashMap, path::Path};
@@ -33,15 +32,18 @@ pub struct Settings {
     pub rename: Rename,
     pub extract: Extract,
     pub preprocessing: Preprocessing,
-    pub processing: Option<Processing>,
+    pub fft: Option<Fft>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct Project {
     pub title: String,
     pub files: Vec<File>,
+    #[serde(default = "all_output")]
     pub output: Vec<Output>,
+    #[serde(default = "all_output")]
     pub gnuplot: Vec<Output>,
+    #[serde(default = "_true")]
     pub threading: bool,
 }
 
@@ -51,7 +53,7 @@ pub enum Output {
     Raw,
     PreInterpolation,
     PostInterpolation,
-    Processed,
+    Fft,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -60,6 +62,9 @@ pub struct File {
     pub dest: String,
     #[serde(default)]
     pub masks: Vec<Mask>,
+    // File specific prefactor override
+    pub prefactor_x: Option<f64>,
+    pub prefactor_y: Option<f64>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize)]
@@ -82,92 +87,75 @@ pub struct Extract {
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct Preprocessing {
-    #[serde(default)]
-    pub prefactor: Prefactor,
+    #[serde(default = "one")]
+    pub prefactor_x: f64,
+    #[serde(default = "one")]
+    pub prefactor_y: f64,
     #[serde(default)]
     pub invert_x: bool,
-    pub interpolation: Option<Interpolation>,
+    pub interpolation: Option<InterpolationAlgorithm>,
+    pub interpolation_n: Option<String>,
     pub trim_left: Option<f64>,
     pub trim_right: Option<f64>,
     #[serde(default)]
     pub impulse_filter: u32,
-    #[serde(default)]
+    #[serde(default = "one")]
     pub impulse_tuning: f64,
     #[serde(default)]
     pub derivative: u32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
-pub struct Interpolation {
-    pub n: String,
-    #[serde(default)]
-    pub algorithm: Algorithm,
-}
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Algorithm {
+pub enum InterpolationAlgorithm {
     Linear,
     Steffen,
 }
 
-impl fmt::Display for Algorithm {
+impl fmt::Display for InterpolationAlgorithm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Algorithm::Linear => write!(f, "linear"),
-            Algorithm::Steffen => write!(f, "Steffen spline"),
+            InterpolationAlgorithm::Linear => write!(f, "linear"),
+            InterpolationAlgorithm::Steffen => write!(f, "Steffen spline"),
         }
-    }
-}
-
-impl Default for Algorithm {
-    fn default() -> Self {
-        Algorithm::Linear
     }
 }
 
 #[allow(clippy::from_over_into)]
-impl Into<gsl_rust::interpolation::Algorithm> for Algorithm {
+impl Into<gsl_rust::interpolation::Algorithm> for InterpolationAlgorithm {
     fn into(self) -> gsl_rust::interpolation::Algorithm {
         match self {
-            Algorithm::Linear => gsl_rust::interpolation::Algorithm::Linear,
-            Algorithm::Steffen => gsl_rust::interpolation::Algorithm::Steffen,
+            InterpolationAlgorithm::Linear => gsl_rust::interpolation::Algorithm::Linear,
+            InterpolationAlgorithm::Steffen => gsl_rust::interpolation::Algorithm::Steffen,
         }
     }
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-pub struct Prefactor {
-    #[serde(default = "one")]
-    pub x: f64,
-    #[serde(default = "one")]
-    pub y: f64,
-}
-
-impl Default for Prefactor {
-    fn default() -> Self {
-        Prefactor { x: 1.0, y: 1.0 }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-pub struct Processing {
-    pub kind: ProcessingKind,
-    pub fft: Option<Fft>,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ProcessingKind {
-    Fft,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct Fft {
     pub zero_pad: String,
     pub cuda: bool,
+    #[serde(default)]
     pub center: bool,
+    #[serde(default = "_true")]
     pub hann: bool,
     pub truncate_lower: Option<f64>,
     pub truncate_upper: Option<f64>,
+}
+
+fn _true() -> bool {
+    true
+}
+
+fn one() -> f64 {
+    1.0
+}
+
+fn all_output() -> Vec<Output> {
+    vec![
+        Output::Raw,
+        Output::PreInterpolation,
+        Output::PostInterpolation,
+        Output::Fft,
+    ]
 }

@@ -23,8 +23,6 @@ mod output;
 mod settings;
 
 use crate::settings::Mask;
-use crate::settings::Processing;
-use crate::settings::ProcessingKind;
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::ensure;
@@ -39,7 +37,7 @@ use gsl_rust::interpolation::Derivative;
 use gsl_rust::stats;
 use log::*;
 use rayon::prelude::*;
-use settings::{Interpolation, Output, Settings};
+use settings::{Output, Settings};
 use simplelog::*;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -259,8 +257,14 @@ fn process_pair(
     }
 
     // Premultiplication
-    let mx = settings.preprocessing.prefactor.x;
-    let my = settings.preprocessing.prefactor.y;
+    // Use local override prefactor if set
+    let mx = file
+        .prefactor_x
+        .unwrap_or(settings.preprocessing.prefactor_x);
+    let my = file
+        .prefactor_y
+        .unwrap_or(settings.preprocessing.prefactor_y);
+
     if mx != 1.0 {
         debug!("Multiplying {src}:'{name}' x by {mx}");
         xy.multiply_x(mx);
@@ -353,8 +357,11 @@ fn process_pair(
     }
 
     // Interpolation
-    let (x, mut y) = match &settings.preprocessing.interpolation {
-        Some(Interpolation { n, algorithm }) => {
+    let (x, mut y) = match (
+        &settings.preprocessing.interpolation,
+        &settings.preprocessing.interpolation_n,
+    ) {
+        (Some(algorithm), Some(n)) => {
             // Parse and process one of:
             // - "n"
             // - log2("2^n")
@@ -407,7 +414,10 @@ fn process_pair(
             drop(xy);
             (Vec::from(x_eval), Vec::from(y_eval))
         }
-        None => xy.take_xy(),
+        (Some(_), None) => {
+            bail!("Missing interpolation length specification");
+        }
+        (None, Some(_)) | (None, None) => xy.take_xy(),
     };
 
     // Output post interpolation data
@@ -429,133 +439,123 @@ fn process_pair(
         )?;
     }
 
-    // Processing
-    match &settings.processing {
-        Some(Processing {
-            kind: ProcessingKind::Fft,
-            fft: Some(fft),
-        }) => {
-            // Parse and process one of:
-            // - "n"
-            // - log2("2^n")
-            // - "min": use minimum padding to make the length a power of 2
-            let desired_n_log2 = if fft.zero_pad == "min" {
-                (y.len() as f64).log2().ceil() as u32
-            } else {
-                match fft.zero_pad.parse::<u32>() {
-                    Ok(n) => n,
-                    Err(_) => parse_log2(&fft.zero_pad)?,
-                }
-            };
-            let desired_n = 2usize.pow(desired_n_log2);
-
-            // Amount of nonzero points
-            let n_data = y.len();
-            // Amount of padded zero points
-            let n_pad = desired_n.saturating_sub(n_data);
-
-            // FFT preprocessing: centering, windowing, padding
-            if fft.center {
-                let mean = stats::mean(&y);
-
-                debug!("Removing mean value {mean} from {src}:'{name}'");
-                y.iter_mut().for_each(|y| {
-                    *y -= mean;
-                });
+    // FFT
+    if let Some(fft) = &settings.fft {
+        // Parse and process one of:
+        // - "n"
+        // - log2("2^n")
+        // - "min": use minimum padding to make the length a power of 2
+        let desired_n_log2 = if fft.zero_pad == "min" {
+            (y.len() as f64).log2().ceil() as u32
+        } else {
+            match fft.zero_pad.parse::<u32>() {
+                Ok(n) => n,
+                Err(_) => parse_log2(&fft.zero_pad)?,
             }
-            if fft.hann {
-                debug!("Applying Hann window to {src}:'{name}'");
-                y.iter_mut().enumerate().for_each(|(i, y)| {
-                    *y *= (i as f64 * std::f64::consts::PI / (n_data - 1) as f64)
-                        .sin()
-                        .powi(2);
-                });
+        };
+        let desired_n = 2usize.pow(desired_n_log2);
 
-                // Avoid numerical error and leaking at the edges
-                *y.first_mut().unwrap() = 0.0;
-                *y.last_mut().unwrap() = 0.0;
-            }
+        // Amount of nonzero points
+        let n_data = y.len();
+        // Amount of padded zero points
+        let n_pad = desired_n.saturating_sub(n_data);
 
-            if n_pad > 0 {
-                debug!(
+        // FFT preprocessing: centering, windowing, padding
+        if fft.center {
+            let mean = stats::mean(&y);
+
+            debug!("Removing mean value {mean} from {src}:'{name}'");
+            y.iter_mut().for_each(|y| {
+                *y -= mean;
+            });
+        }
+        if fft.hann {
+            debug!("Applying Hann window to {src}:'{name}'");
+            y.iter_mut().enumerate().for_each(|(i, y)| {
+                *y *= (i as f64 * std::f64::consts::PI / (n_data - 1) as f64)
+                    .sin()
+                    .powi(2);
+            });
+
+            // Avoid numerical error and leaking at the edges
+            *y.first_mut().unwrap() = 0.0;
+            *y.last_mut().unwrap() = 0.0;
+        }
+
+        if n_pad > 0 {
+            debug!(
                     "Zero padding {src}:'{name}' by {n_pad} to reach 2^{desired_n_log2} points total length ({} MB)",
                     desired_n * std::mem::size_of::<f64>() / 1024usize.pow(2)
                 );
-                y.resize(desired_n, 0.0);
-            }
-
-            // Check power of 2
-            // This could be false if we set a padding length smaller than the data length
-            let n = y.len();
-            ensure!(
-                n.is_power_of_two(),
-                "FFT is only supported for data length 2^n"
-            );
-
-            // Execute FFT
-            let use_cuda = if fft.cuda {
-                if desired_n_log2 < 10 {
-                    warn!("Small FFT sizes may be faster when run on a CPU");
-                }
-
-                if cufft::gpu_count() == 0 {
-                    error!("No CUDA capable GPUs available, using CPU instead");
-                    false
-                } else {
-                    info!(
-                        "Computing FFT on GPU '{}' for {src}:'{name}'",
-                        cufft::first_gpu_name()?
-                    );
-                    true
-                }
-            } else {
-                false
-            };
-            let y = if use_cuda {
-                cufft::fft64_norm(&y)?
-            } else {
-                info!("Computing FFT on CPU for {src}:'{name}'");
-                fft::fft64_packed(&mut y)?;
-                fft::fft64_unpack_norm(&y)
-            };
-
-            // Prepare frequency space cutoffs
-            let lower_cutoff = fft.truncate_lower.unwrap_or(0.0);
-            let upper_cutoff = fft.truncate_upper.unwrap_or(f64::INFINITY);
-            if lower_cutoff != 0.0 || upper_cutoff.is_finite() {
-                debug!("Truncating FFT to {lower_cutoff}..{upper_cutoff} 'Hz' for {src}:'{name}'");
-            }
-
-            // Sampled frequencies : k/(N dt)
-            // Note: this includes zero padding.
-            let dt = x[1] - x[0];
-            let x = (0..y.len())
-                .map(|i| i as f64 / (dt * n as f64))
-                .collect::<Box<[f64]>>();
-            let start_idx = ((lower_cutoff * dt * n as f64).ceil() as usize).min(y.len());
-            let end_idx = ((upper_cutoff * dt * n as f64).ceil() as usize).min(y.len());
-
-            // Output FFT
-            if settings.project.output.contains(&Output::Processed) {
-                info!("Storing FFT for {src}:'{name}'");
-                save(
-                    &settings.project.title,
-                    name,
-                    "fft",
-                    &file.dest,
-                    "Frequency",
-                    "FFT Amplitude",
-                    settings.project.gnuplot.contains(&Output::Processed),
-                    &x[start_idx..end_idx],
-                    &y[start_idx..end_idx],
-                )?;
-            }
+            y.resize(desired_n, 0.0);
         }
-        Some(Processing {
-            kind: ProcessingKind::Fft,
-            fft: None,
-        }) => bail!("Missing FFT settings"),
-        None => {}
+
+        // Check power of 2
+        // This could be false if we set a padding length smaller than the data length
+        let n = y.len();
+        ensure!(
+            n.is_power_of_two(),
+            "FFT is only supported for data length 2^n"
+        );
+
+        // Execute FFT
+        let use_cuda = if fft.cuda {
+            if desired_n_log2 < 10 {
+                warn!("Small FFT sizes may be faster when run on a CPU");
+            }
+
+            if cufft::gpu_count() == 0 {
+                error!("No CUDA capable GPUs available, using CPU instead");
+                false
+            } else {
+                info!(
+                    "Computing FFT on GPU '{}' for {src}:'{name}'",
+                    cufft::first_gpu_name()?
+                );
+                true
+            }
+        } else {
+            false
+        };
+        let y = if use_cuda {
+            cufft::fft64_norm(&y)?
+        } else {
+            info!("Computing FFT on CPU for {src}:'{name}'");
+            fft::fft64_packed(&mut y)?;
+            fft::fft64_unpack_norm(&y)
+        };
+
+        // Prepare frequency space cutoffs
+        let lower_cutoff = fft.truncate_lower.unwrap_or(0.0);
+        let upper_cutoff = fft.truncate_upper.unwrap_or(f64::INFINITY);
+        if lower_cutoff != 0.0 || upper_cutoff.is_finite() {
+            debug!("Truncating FFT to {lower_cutoff}..{upper_cutoff} 'Hz' for {src}:'{name}'");
+        }
+
+        // Sampled frequencies : k/(N dt)
+        // Note: this includes zero padding.
+        let dt = x[1] - x[0];
+        let x = (0..y.len())
+            .map(|i| i as f64 / (dt * n as f64))
+            .collect::<Box<[f64]>>();
+        let start_idx = ((lower_cutoff * dt * n as f64).ceil() as usize).min(y.len());
+        let end_idx = ((upper_cutoff * dt * n as f64).ceil() as usize).min(y.len());
+
+        // Output FFT
+        if settings.project.output.contains(&Output::Fft) {
+            info!("Storing FFT for {src}:'{name}'");
+            save(
+                &settings.project.title,
+                name,
+                "fft",
+                &file.dest,
+                "Frequency",
+                "FFT Amplitude",
+                settings.project.gnuplot.contains(&Output::Fft),
+                &x[start_idx..end_idx],
+                &y[start_idx..end_idx],
+            )?;
+        }
     }
 
     Ok(())

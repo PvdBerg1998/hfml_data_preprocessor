@@ -312,7 +312,6 @@ dependencies = [
  "gsl_rust",
  "log",
  "num-complex",
- "num-traits",
  "rayon",
  "ryu",
  "serde",
