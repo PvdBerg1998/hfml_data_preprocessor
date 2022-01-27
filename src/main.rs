@@ -278,14 +278,14 @@ fn process_pair(
     // Masking
     for &Mask { left, right } in &file.masks {
         ensure!(
-            left >= xy.min_x(),
+            left >= xy.left_x(),
             "Mask {left} is outside domain {:?} for {src}:'{name}'",
-            xy.min_x()
+            xy.left_x()
         );
         ensure!(
-            right <= xy.max_x(),
+            right <= xy.right_x(),
             "Mask {right} is outside domain {:?} for {src}:'{name}'",
-            xy.max_x()
+            xy.right_x()
         );
 
         debug!("Masking {src}:'{name}' from {} to {}", left, right);
@@ -293,27 +293,39 @@ fn process_pair(
     }
 
     // Trimming
-    let trim_a = settings
+    let mut trim_left = settings
         .preprocessing
         .trim_left
-        .unwrap_or_else(|| xy.min_x());
-    let trim_b = settings
+        .unwrap_or_else(|| xy.left_x());
+    let mut trim_right = settings
         .preprocessing
         .trim_right
-        .unwrap_or_else(|| xy.max_x());
-    ensure!(trim_a < trim_b, "Trimmed domain is empty or negative");
+        .unwrap_or_else(|| xy.right_x());
     ensure!(
-        xy.min_x() <= trim_a,
-        "Left trim {trim_a} is outside domain {:?} for {src}:'{name}'",
-        xy.min_x()
+        trim_left < trim_right,
+        "Trimmed domain is empty or negative"
+    );
+
+    // Automagically swap trim sign if needed to deal with negative x data
+    if xy.right_x() <= 0.0 && trim_right >= 0.0 {
+        debug!("Flipping trim domain around zero for {src}:'{name}'");
+        std::mem::swap(&mut trim_left, &mut trim_right);
+        trim_left *= -1.0;
+        trim_right *= -1.0;
+    }
+
+    ensure!(
+        xy.left_x() <= trim_left,
+        "Left trim {trim_left} is outside domain {:?} for {src}:'{name}'",
+        xy.left_x()
     );
     ensure!(
-        xy.max_x() >= trim_b,
-        "Right trim {trim_b} is outside domain {:?} for {src}:'{name}'",
-        xy.max_x()
+        xy.right_x() >= trim_right,
+        "Right trim {trim_right} is outside domain {:?} for {src}:'{name}'",
+        xy.right_x()
     );
-    debug!("Data domain: [{trim_a},{trim_b}]");
-    xy.trim(trim_a, trim_b);
+    debug!("Data domain: [{trim_left},{trim_right}]");
+    xy.trim(trim_left, trim_right);
 
     // Premultiplication
     // Use local override prefactor if set
@@ -407,7 +419,7 @@ fn process_pair(
             info!("Interpolating {src}:'{name}' using {deriv_str} at {n_interp} points using {algorithm} interpolation");
             let dx = xy.domain_len() / n_interp as f64;
             let x_eval = (0..n_interp)
-                .map(|i| (i as f64) * dx + xy.min_x())
+                .map(|i| (i as f64) * dx + xy.left_x())
                 .collect::<Box<[_]>>();
             let y_eval =
                 interpolate_monotonic((*algorithm).into(), deriv, xy.x(), xy.y(), &x_eval)?;

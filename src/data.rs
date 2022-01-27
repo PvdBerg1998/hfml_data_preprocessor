@@ -194,11 +194,11 @@ impl MonotonicXY {
         self.x.len()
     }
 
-    pub fn min_x(&self) -> f64 {
+    pub fn left_x(&self) -> f64 {
         *self.x.first().unwrap()
     }
 
-    pub fn max_x(&self) -> f64 {
+    pub fn right_x(&self) -> f64 {
         *self.x.last().unwrap()
     }
 
@@ -215,7 +215,7 @@ impl MonotonicXY {
     }
 
     pub fn domain_len(&self) -> f64 {
-        self.max_x() - self.min_x()
+        self.right_x() - self.left_x()
     }
 
     pub fn xy(&self) -> (&[f64], &[f64]) {
@@ -297,7 +297,7 @@ impl MonotonicXY {
     /// ### Panics
     /// - When a boundary is higher than the largest x value in the data
     pub fn trim(&mut self, lower_x: f64, upper_x: f64) {
-        if lower_x == self.min_x() && upper_x == self.max_x() {
+        if lower_x == self.left_x() && upper_x == self.right_x() {
             return;
         }
 

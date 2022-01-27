@@ -128,6 +128,8 @@ y = "Vxy"
 # Optional: x domain trimming
 # Recommended to make sure every file has the same domain.
 # This happens _before_ prefactor multiplication and x inversion.
+# These values are interpreted in an absolute sense,
+# i.e. fully negative domains work automagically.
 #
 # Default: full domain.
 trim_left = 12
