@@ -59,7 +59,7 @@ source = "file.013.dat"
 dest = "measurement_013"
 
 # Optional: mask bad data per file
-# Masking is applied _after_ prefactor multiplication.
+# Masking is applied _before_ prefactor multiplication.
 #
 # Recommended: apply to a range of missing or invalid datapoints
 # Default: no masking
@@ -127,14 +127,14 @@ y = "Vxy"
 [preprocessing]
 # Optional: x domain trimming
 # Recommended to make sure every file has the same domain.
-# This happens _after_ prefactor multiplication.
+# This happens _before_ prefactor multiplication and x inversion.
 #
 # Default: full domain.
 trim_left = 12
 trim_right = 32.95
 
 # Optional: multiplication of x/y with a constant.
-# This happens _before_ trimming, masking and inversion (mostly important for negative factors).
+# This happens _after_ trimming and masking.
 #
 # Default: 1.
 prefactor_x = 1

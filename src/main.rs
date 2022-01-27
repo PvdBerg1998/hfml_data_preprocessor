@@ -230,7 +230,7 @@ fn process_pair(
     raw_xlabel: &str,
     xlabel: &str,
     ylabel: &str,
-    mut xy: XY,
+    xy: XY,
 ) -> Result<()> {
     // Check for NaN and infinities
     let src = &file.source;
@@ -254,24 +254,6 @@ fn process_pair(
             xy.x(),
             xy.y(),
         )?;
-    }
-
-    // Premultiplication
-    // Use local override prefactor if set
-    let mx = file
-        .prefactor_x
-        .unwrap_or(settings.preprocessing.prefactor_x);
-    let my = file
-        .prefactor_y
-        .unwrap_or(settings.preprocessing.prefactor_y);
-
-    if mx != 1.0 {
-        debug!("Multiplying {src}:'{name}' x by {mx}");
-        xy.multiply_x(mx);
-    }
-    if my != 1.0 {
-        debug!("Multiplying {src}:'{name}' y by {my}");
-        xy.multiply_y(my);
     }
 
     // Monotonicity
@@ -332,6 +314,24 @@ fn process_pair(
     );
     debug!("Data domain: [{trim_a},{trim_b}]");
     xy.trim(trim_a, trim_b);
+
+    // Premultiplication
+    // Use local override prefactor if set
+    let mx = file
+        .prefactor_x
+        .unwrap_or(settings.preprocessing.prefactor_x);
+    let my = file
+        .prefactor_y
+        .unwrap_or(settings.preprocessing.prefactor_y);
+
+    if mx != 1.0 {
+        debug!("Multiplying {src}:'{name}' x by {mx}");
+        xy.multiply_x(mx);
+    }
+    if my != 1.0 {
+        debug!("Multiplying {src}:'{name}' y by {my}");
+        xy.multiply_y(my);
+    }
 
     // Output preprocessed data
     if settings.project.output.contains(&Output::PreInterpolation) {

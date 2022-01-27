@@ -164,18 +164,6 @@ impl XY {
         self.x.iter().all(|x| x.is_finite()) && self.y.iter().all(|y| y.is_finite())
     }
 
-    pub fn multiply_x(&mut self, v: f64) {
-        self.x.iter_mut().for_each(|x| {
-            *x *= v;
-        });
-    }
-
-    pub fn multiply_y(&mut self, v: f64) {
-        self.y.iter_mut().for_each(|y| {
-            *y *= v;
-        });
-    }
-
     pub fn into_monotonic(self) -> MonotonicXY {
         let XY { mut x, mut y } = self;
 
@@ -236,6 +224,22 @@ impl MonotonicXY {
 
     pub fn take_xy(self) -> (Vec<f64>, Vec<f64>) {
         (self.x, self.y)
+    }
+
+    pub fn multiply_x(&mut self, v: f64) {
+        self.x.iter_mut().for_each(|x| {
+            *x *= v;
+        });
+        if v < 0.0 {
+            self.x.reverse();
+            self.y.reverse();
+        }
+    }
+
+    pub fn multiply_y(&mut self, v: f64) {
+        self.y.iter_mut().for_each(|y| {
+            *y *= v;
+        });
     }
 
     pub fn invert_x(&mut self) {
