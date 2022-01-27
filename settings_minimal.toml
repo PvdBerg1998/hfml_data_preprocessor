@@ -18,6 +18,21 @@
 [project]
 title = "Test"
 
+[preprocessing]
+derivative = 1
+interpolation = "linear"
+interpolation_n = "min"
+invert_x = true
+prefactor_x = 1
+prefactor_y = 1
+trim_left = 12
+trim_right = 32.95
+
+[fft]
+truncate_lower = 0
+truncate_upper = 10000
+zero_pad = "2^22"
+
 [[project.files]]
 dest = "measurement_013"
 source = "file.013.dat"
@@ -37,18 +52,3 @@ y = "Vxx"
 [extract.Vxy]
 x = "B"
 y = "Vxy"
-
-[preprocessing]
-derivative = 1
-interpolation = "linear"
-interpolation_n = "min"
-invert_x = true
-prefactor_x = 1
-prefactor_y = 1
-trim_left = 12
-trim_right = 32.95
-
-[fft]
-truncate_lower = 0
-truncate_upper = 10000
-zero_pad = "2^22"
