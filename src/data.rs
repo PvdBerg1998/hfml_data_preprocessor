@@ -16,6 +16,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+use crate::has_dup;
 use anyhow::ensure;
 use anyhow::Error;
 use gsl_rust::filter;
@@ -36,7 +37,7 @@ impl FromStr for Data {
         // Values are tab separated
         let headers = s
             .lines()
-            .map(|line| line.trim().split('\t'))
+            .map(|line| line.trim().split_ascii_whitespace())
             .flatten()
             .take_while(|&entry| fast_float::parse::<f64, _>(entry).is_err())
             .collect::<Vec<_>>();
@@ -48,7 +49,7 @@ impl FromStr for Data {
         for (i, &header) in headers.iter().enumerate() {
             let column = s
                 .lines()
-                .flat_map(|line| line.trim().split('\t'))
+                .flat_map(|line| line.trim().split_ascii_whitespace())
                 .filter_map(|entry| fast_float::parse::<f64, _>(entry).ok())
                 .skip(i)
                 .step_by(headers.len())
@@ -58,15 +59,6 @@ impl FromStr for Data {
 
         Ok(Data { data })
     }
-}
-
-fn has_dup<T: PartialEq>(slice: &[T]) -> bool {
-    for i in 1..slice.len() {
-        if slice[i..].contains(&slice[i - 1]) {
-            return true;
-        }
-    }
-    false
 }
 
 impl fmt::Display for Data {

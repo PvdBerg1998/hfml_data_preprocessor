@@ -20,27 +20,14 @@
 # All output data is stored in a folder with this name.
 title = "Test"
 
-# Optional: what data to output. Reducing these steps will improve runtime speed.
-#
-# Possible values:
-# - "raw"               : After extraction
-# - "preinterpolation"  : After preprocessing, before interpolation and inversion
-# - "postinterpolation" : After preprocessing, after interpolation and inversion
-# - "fft"               : After FFT
-#
-# Default: everything.
-output = ["raw", "preinterpolation", "postinterpolation", "fft"]
-
 # Use gnuplot for preliminary plotting.
 # These plots should only be used for initial investigation and checks.
 # NB. It seems that gnuplot may be broken on Windows.
 #
 # Disabling provides a massive speedup.
-# Possible values: same as output.
 #
-# Recommended: at least "raw" and "preinterpolation", to inspect data.
-# Default: everything.
-gnuplot = ["raw", "preinterpolation", "postinterpolation", "fft"]
+# Default: true
+gnuplot = true
 
 # Optional: multithreading toggle.
 # This improves performance by using all CPU cores,
@@ -50,31 +37,13 @@ gnuplot = ["raw", "preinterpolation", "postinterpolation", "fft"]
 # Recommended: true
 threading = true
 
-# Project file listing
-# Repeat this for each file you wish to process
-[[project.files]]
-# Raw data source file. Assumed to be in the HFML labview format
-source = "file.013.dat"
-# Output name. Choose something descriptive (sample, temperature, etc.)
-dest = "measurement_013"
-
-# Optional: mask bad data per file
-# Masking is applied _before_ prefactor multiplication.
 #
-# Recommended: apply to a range of missing or invalid datapoints
-# Default: no masking
-masks = [
-  {left = 12, right = 15},
-]
-
-# Optional: prefactor override
-# This takes priority over the global prefactor
-# and should be used to "patch" single files.
+# PREPROCESSING
 #
-# Default: use global prefactor
-prefactor_x = 1
-prefactor_y = 1
 
+# Global settings
+# Operations are applied in the same order as the settings below.
+[preprocessing.global]
 # Optional: impulse filtering
 # Value determines total impulse window width
 # Setting to zero is equal to not defining.
@@ -89,8 +58,184 @@ impulse_filter = 0
 # Default: 1
 impulse_tuning = 1
 
+# TODO: Other (time domain) filtering, such as Savitsky-Golay.
+
+# Optional: mask bad data
 #
-# HEADER RENAMING
+# Recommended: apply to a range of missing or invalid datapoints
+# Default: no masking
+masks = [
+  {left = 12, right = 15},
+]
+
+# Optional: x domain trimming
+# Recommended to make sure every file has the same domain.
+# These values are interpreted in an absolute sense,
+# i.e. fully negative domains work automagically.
+#
+# Default: full domain.
+trim_left = 12
+trim_right = 32.95
+
+# Optional: multiplication of x/y with a constant.
+#
+# Default: 1.
+prefactor_x = 1
+prefactor_y = 1
+
+#
+# Local overrides
+# When multiple of these are defined, the most specific one is used
+# Parameters are inherited from least specific to most specific,
+# in the order as defined below.
+#
+
+# Variable specific settings (all files)
+[preprocessing.Vxx]
+prefactor_x = -1
+
+# File specific settings (all variables)
+[preprocessing."file.013.dat"]
+
+# File and variable specific settings
+[preprocessing."file.013.dat".Vxx]
+
+#
+# PROCESSING
+#
+
+# Global settings
+[processing.global]
+# Optional: x inversion, i.e. x -> 1/x.
+# Required for quantum oscillation FFT's, as the periodicity is in 1/B.
+# This will make the data spacing nonuniform. See interpolation.
+#
+# Default: false
+invert_x = true
+
+# Optional: preprocessing interpolation.
+# Interpolation happens as the last step in preprocessing.
+# Recommended to enable when inverting x.
+#
+# Possible values: "linear", "steffen".
+# Steffen splines are constrained cubic splines,
+# with no oscillations between data points and a smooth first derivative.
+#
+# For FFT with fine interpolation, linear is fine.
+# Steffen splines may be useful if you "underinterpolate" the data first.
+#
+# Default: no interpolation
+interpolation = "linear"
+
+# Interpolation amount
+# Required if interpolation is defined.
+#
+# Possible values:
+# - "n"         : direct interpolation amount. E.g. "1000".
+# - "2^n"       : same as "n" but a power of two.
+# - "minvar"    : minimum x spacing of data, uniform for each variable
+# - "min"       : minimum x spacing of data, uniform for full dataset
+#
+# Recommended: "minvar"
+interpolation_n = "minvar"
+
+# Optional: derivative
+# Possible values: 0, 1, 2.
+#
+# Note that _linear_ interpolation will result in a C^0 function,
+# such that the derivative will be garbage. The second derivative will be zero by definition.
+#
+# Note that the derivative massively amplifies noise.
+# This is of no concern for the FFT.
+#
+# The first derivative may help removing a large low frequency peak from the FFT.
+# This is especially helpful when using boxcar ("no") windowing.
+#
+# Recommended: 0 for raw data, 1 for FFT
+# Default: 0
+derivative = 0
+
+#
+# Local overrides
+# When multiple of these are defined, the most specific one is used
+# Parameters are inherited from least specific to most specific,
+# in the order as defined below.
+#
+
+# Variable specific settings (all files)
+[processing.Vxx]
+
+# File specific settings (all variables)
+[processing."file.013.dat"]
+
+# File and variable specific settings
+[processing."file.013.dat".Vxx]
+derivative = 1
+
+#
+# FFT
+#
+
+# Optional: FFT processing
+[fft]
+# Optional: set DC component to zero in Fourier domain.
+#
+# Recommended: true
+# Default: true
+center = true
+
+# Use CUDA FFT backend (GPU FFT). Requires a modern NVIDIA GPU and CUDA libraries.
+# This may result in a dramatic speedup of the FFT step for large lengths (see zero_pad).
+# CUDA FFTs are batched together and processed in one operation. 
+#
+# If no capable GPU is detected, an error is issued and the CPU is used instead.
+# If the CUDA libraries are not installed, this must be disabled.
+#
+# Recommended: true
+# Default: true
+cuda = true
+
+# Optional: apply Hann window
+#
+# Recommended: true
+# Default: true
+hann = true
+
+# Optional: frequency space truncation
+# This has units of 1/x.
+#
+# Recommended: set some (high) upper bound,
+# as the actual upper bound tends to be extremely high.
+# Default: full spectral range
+truncate_lower = 0
+truncate_upper = 10000
+
+# Zero padded data length.
+# Increasing this will result in a smoother spectrum with no data loss.
+# NB. This length _includes_ the original data.
+#
+# Possible values:
+# - "n"     : direct zero padding amount. E.g. "1000". NB. This _must_ be a power of two.
+# - "2^n"   : same as "n" but a power of two.
+# - "min"   : minimum required to reach the nearest power of two.
+#
+# Recommended: near "2^20".
+zero_pad = "2^22"
+
+#
+# FILES
+#
+
+# Repeat this for each file you wish to process
+[[file]]
+# Raw data source file. Assumed to be in the HFML labview format
+source = "file.013.dat"
+# Output name. Choose something descriptive (sample, temperature, etc.)
+# This may contain sub directories
+dest = "dir1/measurement_013"
+
+#
+# RENAMING
 #
 
 # Renaming of columns
@@ -119,120 +264,3 @@ y = "Vxx"
 [extract.Vxy]
 x = "B"
 y = "Vxy"
-
-#
-# PREPROCESSING
-#
-
-[preprocessing]
-# Optional: x domain trimming
-# Recommended to make sure every file has the same domain.
-# This happens _before_ prefactor multiplication and x inversion.
-# These values are interpreted in an absolute sense,
-# i.e. fully negative domains work automagically.
-#
-# Default: full domain.
-trim_left = 12
-trim_right = 32.95
-
-# Optional: multiplication of x/y with a constant.
-# This happens _after_ trimming and masking.
-#
-# Default: 1.
-prefactor_x = 1
-prefactor_y = 1
-
-# Optional: derivative
-# Possible values: 0, 1, 2.
-#
-# Note that _linear_ interpolation will result in a C^0 function,
-# such that the derivative will be garbage. The second derivative will be zero by definition.
-#
-# Note that the derivative massively amplifies noise.
-# This is of no concern for the FFT.
-#
-# The first derivative may help removing a large low frequency peak from the FFT.
-# This is especially helpful when using boxcar ("no") windowing.
-#
-# Recommended: 0 for raw data, 1 for FFT
-# Default: 0
-derivative = 0
-
-# Optional: x inversion, i.e. x -> 1/x.
-# Required for quantum oscillation FFT's, as the periodicity is in 1/B.
-# This will make the data spacing nonuniform. See interpolation.
-#
-# Default: false
-invert_x = true
-
-# Optional: preprocessing interpolation.
-# Interpolation happens as the last step in preprocessing.
-# Recommended to enable when inverting x.
-#
-# Possible values: "linear", "steffen".
-# Steffen splines are constrained cubic splines,
-# with no oscillations between data points and a smooth first derivative.
-#
-# For FFT with fine interpolation, linear is fine.
-# Steffen splines may be useful if you "underinterpolate" the data first.
-#
-# Default: no interpolation
-interpolation = "linear"
-
-# Interpolation amount
-# Required if interpolation is defined.
-#
-# Possible values:
-# - "n"     : direct interpolation amount. E.g. "1000".
-# - "2^n"   : same as "n" but a power of two.
-# - "min"   : minimum x spacing of dataset.
-#
-# Recommended: "min"
-interpolation_n = "min"
-
-#
-# FFT
-#
-
-# Optional: FFT processing
-[fft]
-# Optional: remove DC component by subtracting the global mean
-#
-# Recommended: false
-# Default: false
-center = false
-
-# Use CUDA FFT backend. Requires a modern NVIDIA GPU.
-# This may result in a dramatic speedup of the FFT step for large lengths (see zero_pad).
-# If no capable GPU is detected, an error is issued and the CPU is used instead.
-#
-# Recommended: true
-# Default: true
-cuda = false
-
-# Optional: apply Hann window
-#
-# Recommended: true
-# Default: true
-hann = true
-
-# Optional: frequency space truncation
-# This has units of 1/x.
-#
-# Recommended: set some (high) upper bound,
-# as the actual upper bound tends to be extremely high.
-# Default: full spectral range
-truncate_lower = 0
-truncate_upper = 10000
-
-# Zero padded data length.
-# Increasing this will result in a smoother spectrum with no data loss.
-# NB. This length _includes_ the original data.
-#
-# Possible values:
-# - "n"     : direct zero padding amount. E.g. "1000". NB. This _must_ be a power of two.
-# - "2^n"   : same as "n" but a power of two.
-# - "min"   : minimum required to reach the nearest power of two.
-#
-# Recommended: near "2^20".
-zero_pad = "2^22"

@@ -37,7 +37,7 @@ use gsl_rust::interpolation::Derivative;
 use gsl_rust::stats;
 use log::*;
 use rayon::prelude::*;
-use settings::{Output, Settings};
+use settings::{Settings, Template};
 use simplelog::*;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -48,7 +48,7 @@ use std::{
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 struct Args {
-    settings: PathBuf,
+    template: Option<PathBuf>,
     #[clap(short = 'v')]
     verbose: bool,
 }
@@ -59,6 +59,59 @@ fn main() {
         error!("{e}");
     }
 }
+
+fn _main() -> Result<()> {
+    let start = Instant::now();
+
+    let args = Args::parse();
+
+    // Register global logger
+    let unix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    let _ = std::fs::create_dir("log");
+    let log_level = if args.verbose {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Info
+    };
+    CombinedLogger::init(vec![
+        TermLogger::new(
+            log_level,
+            ConfigBuilder::default()
+                .set_time_format_str("%H:%M:%S.%f")
+                .set_thread_mode(ThreadLogMode::Names)
+                .set_thread_level(LevelFilter::Error)
+                .build(),
+            TerminalMode::Mixed,
+            ColorChoice::Auto,
+        ),
+        WriteLogger::new(
+            LevelFilter::Debug,
+            ConfigBuilder::default()
+                .set_time_format_str("%H:%M:%S.%f")
+                .set_thread_mode(ThreadLogMode::Names)
+                .set_thread_level(LevelFilter::Error)
+                .build(),
+            File::create(format!("log/hfml_data_preprocessor_{unix}.log"))?,
+        ),
+    ])?;
+
+    // Parse template
+    let template = Template::load(
+        args.template
+            .unwrap_or_else(|| PathBuf::from("settings.toml")),
+    )
+    .map_err(|e| anyhow!("Failed to load template: {e}"))?;
+    debug!("Template: {template:#?}");
+
+    info!("Running project '{}'", template.project.title);
+
+    Ok(())
+}
+
+/*
 
 fn _main() -> Result<()> {
     let start = Instant::now();
@@ -529,13 +582,20 @@ fn process_pair(
         } else {
             false
         };
-        let y = if use_cuda {
+        let mut y = if use_cuda {
             cufft::fft64_norm(&y)?
         } else {
             info!("Computing FFT on CPU for {src}:'{name}'");
             fft::fft64_packed(&mut y)?;
             fft::fft64_unpack_norm(&y)
         };
+
+        // Normalize
+        debug!("Normalizing FFT by 1/{n_data}");
+        let normalisation = (1.0 / n_data as f64).powi(2);
+        y.iter_mut().for_each(|y| {
+            *y *= normalisation;
+        });
 
         // Prepare frequency space cutoffs
         let lower_cutoff = fft.truncate_lower.unwrap_or(0.0);
@@ -618,4 +678,14 @@ fn parse_log2(n: &str) -> Result<u32> {
     } else {
         bail!("Invalid length: {n}");
     }
+}
+*/
+
+pub fn has_dup<T: PartialEq>(slice: &[T]) -> bool {
+    for i in 1..slice.len() {
+        if slice[i..].contains(&slice[i - 1]) {
+            return true;
+        }
+    }
+    false
 }
