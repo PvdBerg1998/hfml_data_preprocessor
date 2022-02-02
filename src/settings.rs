@@ -82,7 +82,10 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
         .iter()
         .map(|file| file.dest.as_str())
         .collect::<Vec<_>>();
-    ensure!(!has_dup(&dest_names), "file destinations must be unique");
+    ensure!(
+        !has_dup(&dest_names),
+        "file destinations may not contain duplicates"
+    );
 
     let rename = root.get("rename");
     let rename = match rename.and_then(|rename| rename.as_table()) {
@@ -297,6 +300,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
     Ok(Template {
         project,
         rename,
+        files,
         settings,
         fft,
     })
@@ -315,6 +319,7 @@ fn update_preprocessing<'a>(
         trim_right,
         prefactor_x,
         prefactor_y,
+        invert_x,
     } = specific;
 
     for settings in iter {
@@ -339,6 +344,9 @@ fn update_preprocessing<'a>(
         if prefactor_y != &default.prefactor_y {
             settings.preprocessing.prefactor_y = prefactor_y.to_owned();
         }
+        if invert_x != &default.invert_x {
+            settings.preprocessing.invert_x = invert_x.to_owned();
+        }
     }
 }
 
@@ -348,16 +356,12 @@ fn update_processing<'a>(
     default: &Processing,
 ) {
     let Processing {
-        invert_x,
         interpolation,
         interpolation_n,
         derivative,
     } = specific;
 
     for settings in iter {
-        if invert_x != &default.invert_x {
-            settings.processing.invert_x = invert_x.to_owned();
-        }
         if interpolation != &default.interpolation {
             settings.processing.interpolation = interpolation.to_owned();
         }
@@ -374,6 +378,7 @@ fn update_processing<'a>(
 pub struct Template {
     pub project: Project,
     pub rename: Vec<Rename>,
+    pub files: Vec<File>,
     pub settings: Vec<Settings>,
     pub fft: Option<Fft>,
 }
@@ -384,7 +389,7 @@ impl Template {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct Project {
     pub title: String,
     #[serde(default = "_true")]
@@ -401,7 +406,7 @@ pub struct Settings {
     pub processing: Processing,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
 pub struct File {
     pub source: String,
     pub dest: String,
@@ -440,12 +445,12 @@ pub struct Preprocessing {
     pub prefactor_x: f64,
     #[serde(default = "one")]
     pub prefactor_y: f64,
+    #[serde(default)]
+    pub invert_x: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct Processing {
-    #[serde(default)]
-    pub invert_x: bool,
     pub interpolation: Option<InterpolationAlgorithm>,
     pub interpolation_n: Option<String>,
     #[serde(default)]
@@ -483,7 +488,7 @@ pub struct Fft {
     pub zero_pad: String,
     #[serde(default = "_true")]
     pub cuda: bool,
-    #[serde(default)]
+    #[serde(default = "_true")]
     pub center: bool,
     #[serde(default = "_true")]
     pub hann: bool,

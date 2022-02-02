@@ -83,6 +83,13 @@ trim_right = 32.95
 prefactor_x = 1
 prefactor_y = 1
 
+# Optional: x inversion, i.e. x -> 1/x.
+# Required for quantum oscillation FFT's, as the periodicity is in 1/B.
+# This will make the data spacing nonuniform. See interpolation.
+#
+# Default: false
+invert_x = true
+
 #
 # Local overrides
 # When multiple of these are defined, the most specific one is used
@@ -106,12 +113,6 @@ prefactor_x = -1
 
 # Global settings
 [processing.global]
-# Optional: x inversion, i.e. x -> 1/x.
-# Required for quantum oscillation FFT's, as the periodicity is in 1/B.
-# This will make the data spacing nonuniform. See interpolation.
-#
-# Default: false
-invert_x = true
 
 # Optional: preprocessing interpolation.
 # Interpolation happens as the last step in preprocessing.
@@ -133,11 +134,11 @@ interpolation = "linear"
 # Possible values:
 # - "n"         : direct interpolation amount. E.g. "1000".
 # - "2^n"       : same as "n" but a power of two.
-# - "minvar"    : minimum x spacing of data, uniform for each variable
-# - "min"       : minimum x spacing of data, uniform for full dataset
+# - "minvar"    : minimum x spacing of data, uniform between files per variable
+# - "min"       : minimum x spacing of data, uniform for entire project
 #
-# Recommended: "minvar"
-interpolation_n = "minvar"
+# Recommended: "min"
+interpolation_n = "min"
 
 # Optional: derivative
 # Possible values: 0, 1, 2.
@@ -178,7 +179,7 @@ derivative = 1
 
 # Optional: FFT processing
 [fft]
-# Optional: set DC component to zero in Fourier domain.
+# Optional: subtract the mean from the data before applying the FFT.
 #
 # Recommended: true
 # Default: true

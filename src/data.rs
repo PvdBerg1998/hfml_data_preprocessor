@@ -107,13 +107,13 @@ impl Data {
     /// Tries to change the name of a column, if it exists.
     /// ### Panics
     /// - When target column already exists (i.e. overwriting is not allowed)
-    pub fn rename_column(&mut self, old: &str, new: &str) {
-        if let Some(old_val) = self.data.remove(old) {
+    pub fn rename_column(&mut self, from: &str, to: &str) {
+        if let Some(from_val) = self.data.remove(from) {
             assert!(
-                !self.data.contains_key(new),
+                !self.data.contains_key(to),
                 "Tried renaming column to existing column"
             );
-            self.data.insert(String::from(new), old_val);
+            self.data.insert(String::from(to), from_val);
         }
     }
 
@@ -122,7 +122,7 @@ impl Data {
     /// - When columns do not exist
     /// - When columns do not have the same length
     /// - When columns are empty
-    pub fn clone_xy(&mut self, x: &str, y: &str) -> XY {
+    pub fn clone_xy(&self, x: &str, y: &str) -> XY {
         let x = self.data.get(x).unwrap();
         let y = self.data.get(y).unwrap();
         assert_eq!(x.len(), y.len(), "XY columns have a different length");
