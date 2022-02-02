@@ -22,6 +22,10 @@ mod data;
 mod output;
 mod settings;
 
+mod built_info {
+    include!(concat!(env!("OUT_DIR"), "/built.rs"));
+}
+
 use crate::settings::*;
 use anyhow::anyhow;
 use anyhow::bail;
@@ -58,6 +62,7 @@ struct Args {
 
 fn main() {
     gsl_rust::disable_error_handler(); // We handle errors ourselves and this aborts the program.
+
     if let Err(e) = _main() {
         error!("{e}");
     }
@@ -100,6 +105,14 @@ fn _main() -> Result<()> {
             File::create(format!("log/hfml_data_preprocessor_{unix}.log"))?,
         ),
     ])?;
+
+    info!(
+        "Running hfml_data_preprocessor version {}, built at {} for {} by {}.",
+        built_info::PKG_VERSION,
+        built_info::BUILT_TIME_UTC,
+        built_info::TARGET,
+        built_info::RUSTC_VERSION
+    );
 
     // Parse template
     let template = Template::load(
@@ -161,6 +174,8 @@ fn _main() -> Result<()> {
             settings.prepare(data, &project)?.preprocess()
         })
         .collect::<Result<Vec<_>>>()?;
+
+    info!("Calculating automatic interpolation statistics");
 
     // Calculate minimum dx based interpolation amounts per variable per file
     let n_per_var = preprocessed

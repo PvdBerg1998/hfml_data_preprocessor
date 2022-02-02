@@ -25,6 +25,9 @@ toml = "0.5.8"
 #convolve = { version = "*", path = "../convolve" }
 #sled = { version = "0.34.7", features = ["compression"] }
 
+[build-dependencies]
+built = {version = "0.5.1", features = ["chrono"]}
+
 [profile.release]
 # Maximum optimization
 codegen-units = 1
