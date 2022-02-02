@@ -190,7 +190,7 @@ center = true
 # CUDA FFTs are batched together and processed in one operation. 
 #
 # If no capable GPU is detected, an error is issued and the CPU is used instead.
-# If the CUDA libraries are not installed, this must be disabled.
+# If the CUDA shared libraries are not installed, the program may abort immediately.
 #
 # Recommended: true
 # Default: true
