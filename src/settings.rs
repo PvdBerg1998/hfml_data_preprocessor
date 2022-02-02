@@ -27,6 +27,9 @@ use std::fmt;
 use std::path::Path;
 use toml::Value;
 
+pub const INTERP_OPTION_MIN_VAR: &str = "minvar";
+pub const INTERP_OPTION_MIN: &str = "min";
+
 pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
     let s = std::fs::read_to_string(path)?;
     let root = toml::from_str::<Value>(&s)?;

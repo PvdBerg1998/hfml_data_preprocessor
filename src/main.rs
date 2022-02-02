@@ -174,7 +174,7 @@ fn _main() -> Result<()> {
         .filter(
             // See filter above
             |preprocessed| match preprocessed.settings.processing.interpolation_n.as_deref() {
-                Some("minval") | Some("min") => true,
+                Some(INTERP_OPTION_MIN_VAR) | Some(INTERP_OPTION_MIN) => true,
                 _ => false,
             },
         )
@@ -523,8 +523,12 @@ impl<'a> Preprocessed<'a> {
                 // - "minvar"
                 // - "min"
                 let n_interp = match n.as_str() {
-                    "minvar" => n_interp_var.expect("should have calculated n_interp_var"),
-                    "min" => n_interp_global.expect("should have calculated n_interp_global"),
+                    INTERP_OPTION_MIN_VAR => {
+                        n_interp_var.expect("should have calculated n_interp_var")
+                    }
+                    INTERP_OPTION_MIN => {
+                        n_interp_global.expect("should have calculated n_interp_global")
+                    }
                     n => match n.parse::<u64>() {
                         Ok(n) => n,
                         Err(_) => 2u64.pow(parse_log2(n)?),
@@ -596,6 +600,8 @@ impl<'a> Processed<'a> {
         } = self;
         let name = &settings.extract.name;
         let src = settings.file.source.as_str();
+
+        info!("Preparing file '{src}': dataset '{name}' for FFT");
 
         // FFT
         // Parse and process one of:
@@ -685,6 +691,8 @@ impl<'a> PreparedFft<'a> {
         } = self;
         let name = &settings.extract.name;
         let src = settings.file.source.as_str();
+
+        info!("FFT postprocessing file '{src}': dataset '{name}'");
 
         // Normalize
         debug!("Normalizing FFT by 1/{n_data}");
