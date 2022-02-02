@@ -202,11 +202,11 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
         }
     }
 
-    // [processing."file.013.dat"]
-    for source in files.iter().map(|file| file.source.as_str()) {
+    // [processing."dir1/measurement_013"]
+    for dest in files.iter().map(|file| file.dest.as_str()) {
         let preprocessing = if_chain::if_chain! {
             if let Some(preprocessing) = root.get("preprocessing");
-            if let Some(specific) = preprocessing.get(source);
+            if let Some(specific) = preprocessing.get(dest);
             then {
                 Some(<Preprocessing as Deserialize>::deserialize(
                     specific.to_owned().into_deserializer(),
@@ -218,7 +218,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
 
         let processing = if_chain::if_chain! {
             if let Some(processing) = root.get("processing");
-            if let Some(specific) = processing.get(source);
+            if let Some(specific) = processing.get(dest);
             then {
                 Some(<Processing as Deserialize>::deserialize(
                     specific.to_owned().into_deserializer(),
@@ -232,7 +232,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
             update_preprocessing(
                 settings
                     .iter_mut()
-                    .filter(|settings| settings.file.source == source),
+                    .filter(|settings| settings.file.dest == dest),
                 &specific,
                 &preprocessing_default,
             );
@@ -241,19 +241,19 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
             update_processing(
                 settings
                     .iter_mut()
-                    .filter(|settings| settings.file.source == source),
+                    .filter(|settings| settings.file.dest == dest),
                 &specific,
                 &processing_default,
             );
         }
     }
 
-    // [processing."file.013.dat".Vxx]
-    for source in files.iter().map(|file| file.source.as_str()) {
+    // [processing."dir1/measurement_013".Vxx]
+    for dest in files.iter().map(|file| file.dest.as_str()) {
         for var in extract.iter().map(|extract| extract.name.as_str()) {
             let preprocessing = if_chain::if_chain! {
                 if let Some(preprocessing) = root.get("preprocessing");
-                if let Some(table) = preprocessing.get(source);
+                if let Some(table) = preprocessing.get(dest);
                 if let Some(specific) = table.get(var);
                 then {
                     Some(<Preprocessing as Deserialize>::deserialize(
@@ -266,7 +266,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
 
             let processing = if_chain::if_chain! {
                 if let Some(processing) = root.get("processing");
-                if let Some(table) = processing.get(source);
+                if let Some(table) = processing.get(dest);
                 if let Some(specific) = table.get(var);
                 then {
                     Some(<Processing as Deserialize>::deserialize(
@@ -281,7 +281,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
                 update_preprocessing(
                     settings
                         .iter_mut()
-                        .filter(|settings| settings.file.source == source)
+                        .filter(|settings| settings.file.dest == dest)
                         .filter(|settings| settings.extract.name == var),
                     &specific,
                     &preprocessing_default,
@@ -291,7 +291,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
                 update_processing(
                     settings
                         .iter_mut()
-                        .filter(|settings| settings.file.source == source)
+                        .filter(|settings| settings.file.dest == dest)
                         .filter(|settings| settings.extract.name == var),
                     &specific,
                     &processing_default,

@@ -102,10 +102,10 @@ invert_x = true
 prefactor_x = -1
 
 # File specific settings (all variables)
-[preprocessing."file.013.dat"]
+[preprocessing."dir1/measurement_013"]
 
 # File and variable specific settings
-[preprocessing."file.013.dat".Vxx]
+[preprocessing."dir1/measurement_013".Vxx]
 
 #
 # PROCESSING
@@ -167,10 +167,10 @@ derivative = 0
 [processing.Vxx]
 
 # File specific settings (all variables)
-[processing."file.013.dat"]
+[processing."dir1/measurement_013"]
 
 # File and variable specific settings
-[processing."file.013.dat".Vxx]
+[processing."dir1/measurement_013".Vxx]
 derivative = 1
 
 #
