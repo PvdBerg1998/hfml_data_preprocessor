@@ -158,7 +158,7 @@ fn _main() -> Result<()> {
         .par_iter()
         .map(|settings| {
             let data = &data[settings.file.source.as_str()];
-            Ok(settings.prepare(data, &project)?.preprocess()?)
+            settings.prepare(data, &project)?.preprocess()
         })
         .collect::<Result<Vec<_>>>()?;
 
@@ -228,7 +228,7 @@ fn _main() -> Result<()> {
             let n_interp_var = max_n_per_var
                 .get(preprocessed.settings.extract.name.as_str())
                 .copied();
-            Ok(preprocessed.process(n_interp_global, n_interp_var)?)
+            preprocessed.process(n_interp_global, n_interp_var)
         })
         .collect::<Result<Vec<_>>>()?;
 
@@ -236,7 +236,7 @@ fn _main() -> Result<()> {
     if let Some(fft) = fft {
         let prepared = processed
             .into_par_iter()
-            .map(|processed| Ok(processed.prepare_fft(&fft)?))
+            .map(|processed| processed.prepare_fft(&fft))
             .collect::<Result<Vec<_>>>()?;
 
         let use_cuda = if fft.cuda {
@@ -275,7 +275,7 @@ fn _main() -> Result<()> {
                     fft::fft64_packed(&mut prepared.y)?;
                     let fft = fft::fft64_unpack_norm(&prepared.y);
 
-                    Ok(prepared.finish(fft)?)
+                    prepared.finish(fft)
                 })?;
         };
     }
@@ -556,7 +556,7 @@ impl<'a> Preprocessed<'a> {
                 let y_eval =
                     interpolate_monotonic((*algorithm).into(), deriv, xy.x(), xy.y(), &x_eval)?;
 
-                (Vec::from(x_eval), Vec::from(y_eval))
+                (Vec::from(x_eval), y_eval)
             }
             (Some(_), None) => {
                 bail!("Missing interpolation length specification");
