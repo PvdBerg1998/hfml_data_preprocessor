@@ -19,23 +19,32 @@
 use anyhow::ensure;
 use anyhow::Result;
 use std::fmt::Display;
+use std::fmt::Write as FmtWrite;
 use std::io::Write as IoWrite;
 use std::process::Command;
 use std::process::Stdio;
-use std::{fs::File, io::BufWriter, path::Path};
+use std::{fs::File, path::Path};
 
 pub fn store_csv<P: AsRef<Path>>(x: &[f64], y: &[f64], path: P) -> Result<()> {
     assert_eq!(x.len(), y.len());
-    // 2^22 ~ 4 MB
-    let mut w = BufWriter::with_capacity(2usize.pow(22), File::create(path)?);
+    // Preallocate string of size 2^22 ~ 4 MB
+    let mut w = String::with_capacity(2usize.pow(22));
     let mut x_buf = ryu::Buffer::new();
     let mut y_buf = ryu::Buffer::new();
     for (x, y) in x.iter().zip(y.iter()) {
-        let x = x_buf.format(*x);
-        let y = y_buf.format(*y);
-        writeln!(&mut w, "{x},{y}")?;
+        // Assume we only deal with finite values
+        let x = x_buf.format_finite(*x);
+        let y = y_buf.format_finite(*y);
+
+        // Writing to a string never fails so we remove the error handling branches
+        let _ = w.write_str(x);
+        let _ = w.write_char(',');
+        let _ = w.write_str(y);
     }
-    w.flush()?;
+    // Write to file in one go
+    let mut f = File::create(path)?;
+    f.set_len(w.len() as u64)?;
+    f.write_all(w.as_bytes())?;
     Ok(())
 }
 

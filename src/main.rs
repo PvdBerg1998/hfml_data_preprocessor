@@ -42,6 +42,7 @@ use gsl_rust::interpolation::Derivative;
 use gsl_rust::stats;
 use itertools::Itertools;
 use log::*;
+use num_complex::Complex64;
 use rayon::prelude::*;
 use settings::{Settings, Template};
 use simplelog::*;
@@ -198,7 +199,7 @@ fn _main() -> Result<()> {
         .map(|preprocessed| {
             let name = &preprocessed.settings.extract.name;
             let src = preprocessed.settings.file.source.as_str();
-            debug!("Calculating minimum delta x for all {src}:'{name}'");
+            debug!("Calculating minimum delta x for all '{src}':'{name}'");
 
             // Loop over x, compare neighbours, find smallest interval
             let n = match preprocessed
@@ -215,7 +216,7 @@ fn _main() -> Result<()> {
                     let n = preprocessed.xy.domain_len() / dx;
                     n.ceil() as u64
                 }
-                None => bail!("Unable to determine minimum delta x for {src}:'{name}'"),
+                None => bail!("Unable to determine minimum delta x for '{src}':'{name}'"),
             };
             Ok((name.as_str(), n))
         })
@@ -276,7 +277,7 @@ fn _main() -> Result<()> {
                 .iter()
                 .map(|prepared| prepared.y.as_slice())
                 .collect::<Vec<_>>();
-            let fft = cufft::fft64_norm_batch(&batch)?;
+            let fft = cufft::fft64_batch(&batch)?;
             prepared
                 .into_par_iter()
                 .zip(fft)
@@ -288,9 +289,9 @@ fn _main() -> Result<()> {
                     let name = &prepared.settings.extract.name;
                     let src = prepared.settings.file.source.as_str();
 
-                    info!("Computing FFT on CPU for {src}:'{name}'");
+                    info!("Computing FFT on CPU for '{src}':'{name}'");
                     fft::fft64_packed(&mut prepared.y)?;
-                    let fft = fft::fft64_unpack_norm(&prepared.y);
+                    let fft = fft::fft64_unpack(&prepared.y);
 
                     prepared.finish(fft)
                 })?;
@@ -364,14 +365,14 @@ impl<'a> Prepared<'a> {
         info!("Preprocessing file '{src}': dataset '{name}'");
 
         let n_log2 = (xy.len() as f64).log2();
-        debug!("Dataset {src}:'{name}' length: ~2^{n_log2:.2}");
+        debug!("Dataset '{src}':'{name}' length: ~2^{n_log2:.2}");
 
         // Monotonicity
-        debug!("Making {src}:'{name}' monotonic");
+        debug!("Making '{src}':'{name}' monotonic");
         let mut xy = xy.into_monotonic();
 
         // Output raw data
-        debug!("Storing raw data for {src}:'{name}'");
+        debug!("Storing raw data for '{src}':'{name}'");
         save(
             &project.title,
             name,
@@ -396,7 +397,7 @@ impl<'a> Prepared<'a> {
             );
 
             debug!(
-                "Applying impulse filter of width {width} and tuning {tuning} to {src}:'{name}'"
+                "Applying impulse filter of width {width} and tuning {tuning} to '{src}':'{name}'"
             );
             xy.impulse_filter(width as usize, tuning);
         }
@@ -405,16 +406,16 @@ impl<'a> Prepared<'a> {
         for &Mask { left, right } in &settings.preprocessing.masks {
             ensure!(
                 left >= xy.left_x(),
-                "Mask {left} is outside domain {:?} for {src}:'{name}'",
+                "Mask {left} is outside domain {:?} for '{src}':'{name}'",
                 xy.left_x()
             );
             ensure!(
                 right <= xy.right_x(),
-                "Mask {right} is outside domain {:?} for {src}:'{name}'",
+                "Mask {right} is outside domain {:?} for '{src}':'{name}'",
                 xy.right_x()
             );
 
-            debug!("Masking {src}:'{name}' from {} to {}", left, right);
+            debug!("Masking '{src}':'{name}' from {} to {}", left, right);
             xy.mask(left, right);
         }
 
@@ -434,20 +435,31 @@ impl<'a> Prepared<'a> {
 
         // Automagically swap trim sign if needed to deal with negative x data
         if xy.right_x() <= 0.0 && trim_right >= 0.0 {
-            debug!("Flipping trim domain around zero for {src}:'{name}'");
+            debug!("Flipping trim domain around zero for '{src}':'{name}'");
             std::mem::swap(&mut trim_left, &mut trim_right);
             trim_left *= -1.0;
             trim_right *= -1.0;
         }
 
+        if settings.preprocessing.invert_x {
+            ensure!(
+                trim_left > 0.0,
+                "Can't trim to zero when inverting x for '{src}':'{name}'"
+            );
+            ensure!(
+                trim_right > 0.0,
+                "Can't trim to zero when inverting x for '{src}':'{name}'"
+            );
+        }
+
         ensure!(
             xy.left_x() <= trim_left,
-            "Left trim {trim_left} is outside domain {:?} for {src}:'{name}'",
+            "Left trim {trim_left} is outside domain {:?} for '{src}':'{name}'",
             xy.left_x()
         );
         ensure!(
             xy.right_x() >= trim_right,
-            "Right trim {trim_right} is outside domain {:?} for {src}:'{name}'",
+            "Right trim {trim_right} is outside domain {:?} for '{src}':'{name}'",
             xy.right_x()
         );
         debug!("Data domain: [{trim_left},{trim_right}]");
@@ -458,16 +470,16 @@ impl<'a> Prepared<'a> {
         let mx = settings.preprocessing.prefactor_x;
         let my = settings.preprocessing.prefactor_y;
         if mx != 1.0 {
-            debug!("Multiplying {src}:'{name}' x by {mx}");
+            debug!("Multiplying '{src}':'{name}' x by {mx}");
             xy.multiply_x(mx);
         }
         if my != 1.0 {
-            debug!("Multiplying {src}:'{name}' y by {my}");
+            debug!("Multiplying '{src}':'{name}' y by {my}");
             xy.multiply_y(my);
         }
 
         // Output preprocessed data
-        debug!("Storing preprocessed data for {src}:'{name}'");
+        debug!("Storing preprocessed data for '{src}':'{name}'");
         save(
             &project.title,
             name,
@@ -482,11 +494,11 @@ impl<'a> Prepared<'a> {
 
         // 1/x
         if settings.preprocessing.invert_x {
-            debug!("Inverting {src}:'{name}' x");
+            debug!("Inverting '{src}':'{name}' x");
             xy.invert_x();
 
             // Output inverted data
-            debug!("Storing inverted data for {src}:'{name}'");
+            debug!("Storing inverted data for '{src}':'{name}'");
             save(
                 &project.title,
                 name,
@@ -570,7 +582,7 @@ impl<'a> Preprocessed<'a> {
                     Derivative::Second => "2nd derivative",
                 };
 
-                info!("Interpolating {src}:'{name}' using {deriv_str} at {n_interp} points using {algorithm} interpolation");
+                info!("Interpolating '{src}':'{name}' using {deriv_str} at {n_interp} points using {algorithm} interpolation");
 
                 let dx = xy.domain_len() / n_interp as f64;
                 let x_eval = (0..n_interp)
@@ -588,7 +600,7 @@ impl<'a> Preprocessed<'a> {
         };
 
         // Output post interpolation data
-        debug!("Storing post-interpolation data for {src}:'{name}'");
+        debug!("Storing post-interpolation data for '{src}':'{name}'");
         save(
             &project.title,
             name,
@@ -645,19 +657,18 @@ impl<'a> Processed<'a> {
         let n_data = y.len();
         // Amount of padded zero points
         let n_pad = desired_n.saturating_sub(n_data);
-        debug_assert_eq!(n_data + n_pad, desired_n);
 
         // FFT preprocessing: centering, windowing, padding
         if fft_settings.center {
             let mean = stats::mean(&y);
 
-            debug!("Removing mean value {mean} from {src}:'{name}'");
+            debug!("Removing mean value {mean} from '{src}':'{name}'");
             y.iter_mut().for_each(|y| {
                 *y -= mean;
             });
         }
         if fft_settings.hann {
-            debug!("Applying Hann window to {src}:'{name}'");
+            debug!("Applying Hann window to '{src}':'{name}'");
             y.iter_mut().enumerate().for_each(|(i, y)| {
                 *y *= (i as f64 * std::f64::consts::PI / (n_data - 1) as f64)
                     .sin()
@@ -671,7 +682,7 @@ impl<'a> Processed<'a> {
 
         if n_pad > 0 {
             debug!(
-                    "Zero padding {src}:'{name}' by {n_pad} to reach 2^{desired_n_log2} points total length ({} MB)",
+                    "Zero padding '{src}':'{name}' by {n_pad} to reach 2^{desired_n_log2} points total length ({} MB)",
                     desired_n * std::mem::size_of::<f64>() / 1024usize.pow(2)
                 );
             y.resize(desired_n, 0.0);
@@ -700,7 +711,7 @@ impl<'a> Processed<'a> {
 }
 
 impl<'a> PreparedFft<'a> {
-    fn finish(self, mut fft: Vec<f64>) -> Result<()> {
+    fn finish(self, fft: Vec<Complex64>) -> Result<()> {
         let Self {
             project,
             settings,
@@ -717,18 +728,11 @@ impl<'a> PreparedFft<'a> {
 
         info!("FFT postprocessing file '{src}': dataset '{name}'");
 
-        // Normalize
-        debug!("Normalizing FFT by 1/{n_data}");
-        let normalisation = 1.0 / n_data as f64;
-        fft.iter_mut().for_each(|y| {
-            *y *= normalisation;
-        });
-
         // Prepare frequency space cutoffs
         let lower_cutoff = fft_settings.truncate_lower.unwrap_or(0.0);
         let upper_cutoff = fft_settings.truncate_upper.unwrap_or(f64::INFINITY);
         if lower_cutoff != 0.0 || upper_cutoff.is_finite() {
-            debug!("Truncating FFT to {lower_cutoff}..{upper_cutoff} 'Hz' for {src}:'{name}'");
+            debug!("Truncating FFT to {lower_cutoff}..{upper_cutoff} 'Hz' for '{src}':'{name}'");
         }
 
         // Sampled frequencies : k/(N dt)
@@ -742,8 +746,17 @@ impl<'a> PreparedFft<'a> {
         let start_idx = ((lower_cutoff * dt * n as f64).ceil() as usize).min(fft.len());
         let end_idx = ((upper_cutoff * dt * n as f64).ceil() as usize).min(fft.len());
 
+        // Take absolute value and normalize
+        // NB. Do this after truncation to save a huge amount of work
+        debug!("Normalizing FFT by 1/{n_data}");
+        let normalisation = 1.0 / n_data as f64;
+        let fft = fft[start_idx..end_idx]
+            .into_iter()
+            .map(|y| y.norm() * normalisation)
+            .collect::<Vec<_>>();
+
         // Output FFT
-        info!("Storing FFT for {src}:'{name}'");
+        info!("Storing FFT for '{src}':'{name}'");
         save(
             &project.title,
             name,
@@ -753,7 +766,7 @@ impl<'a> PreparedFft<'a> {
             "FFT Amplitude",
             false,
             &x[start_idx..end_idx],
-            &fft[start_idx..end_idx],
+            &fft,
         )?;
 
         Ok(())
