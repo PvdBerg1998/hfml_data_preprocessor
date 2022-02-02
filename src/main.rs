@@ -287,7 +287,11 @@ fn _main() -> Result<()> {
 }
 
 impl Settings {
-    fn prepare(&self, data: &Data, project: &Project) -> Result<Prepared<'_>> {
+    fn prepare<'data, 'settings: 'data>(
+        &'settings self,
+        data: &'data Data,
+        project: &'settings Project,
+    ) -> Result<Prepared<'data>> {
         let settings = self;
         let Extract { name, x, y } = &settings.extract;
         let src = settings.file.source.as_str();
@@ -314,13 +318,12 @@ impl Settings {
         }
 
         // Prepare labels
-        let title = project.title.clone();
         let x_label = x.to_owned();
         let y_label = y.to_owned();
 
         Ok(Prepared {
+            project,
             settings,
-            title,
             x_label,
             y_label,
             xy,
@@ -331,8 +334,8 @@ impl Settings {
 impl<'a> Prepared<'a> {
     fn preprocess(self) -> Result<Preprocessed<'a>> {
         let Self {
+            project,
             settings,
-            title,
             x_label,
             y_label,
             xy,
@@ -353,12 +356,13 @@ impl<'a> Prepared<'a> {
         // Output raw data
         debug!("Storing raw data for {src}:'{name}'");
         save(
-            &title,
+            &project.title,
             name,
             "raw",
             &settings.file.dest,
             &x_label,
             &y_label,
+            project.gnuplot,
             xy.x(),
             xy.y(),
         )?;
@@ -448,12 +452,13 @@ impl<'a> Prepared<'a> {
         // Output preprocessed data
         debug!("Storing preprocessed data for {src}:'{name}'");
         save(
-            &title,
+            &project.title,
             name,
             "preprocessed",
             &settings.file.dest,
             &x_label,
             &y_label,
+            project.gnuplot,
             xy.x(),
             xy.y(),
         )?;
@@ -466,12 +471,13 @@ impl<'a> Prepared<'a> {
             // Output inverted data
             debug!("Storing inverted data for {src}:'{name}'");
             save(
-                &title,
+                &project.title,
                 name,
                 "inverted",
                 &settings.file.dest,
                 &x_label,
                 &y_label,
+                project.gnuplot,
                 xy.x(),
                 xy.y(),
             )?;
@@ -484,8 +490,8 @@ impl<'a> Prepared<'a> {
         };
 
         Ok(Preprocessed {
+            project,
             settings,
-            title,
             x_label,
             y_label,
             xy,
@@ -500,8 +506,8 @@ impl<'a> Preprocessed<'a> {
         n_interp_var: Option<u64>,
     ) -> Result<Processed<'a>> {
         let Self {
+            project,
             settings,
-            title,
             x_label,
             y_label,
             xy,
@@ -567,19 +573,20 @@ impl<'a> Preprocessed<'a> {
         // Output post interpolation data
         debug!("Storing post-interpolation data for {src}:'{name}'");
         save(
-            &title,
+            &project.title,
             name,
             "post interpolation",
             &settings.file.dest,
             &x_label,
             &y_label,
+            project.gnuplot,
             &x,
             &y,
         )?;
 
         Ok(Processed {
+            project,
             settings,
-            title,
             x_label,
             y_label,
             x,
@@ -591,8 +598,8 @@ impl<'a> Preprocessed<'a> {
 impl<'a> Processed<'a> {
     fn prepare_fft(self, fft_settings: &'a Fft) -> Result<PreparedFft<'a>> {
         let Self {
+            project,
             settings,
-            title,
             x_label,
             y_label,
             x,
@@ -663,9 +670,9 @@ impl<'a> Processed<'a> {
         );
 
         Ok(PreparedFft {
+            project,
             settings,
             fft_settings,
-            title,
             x_label,
             y_label,
             n_data,
@@ -679,9 +686,9 @@ impl<'a> Processed<'a> {
 impl<'a> PreparedFft<'a> {
     fn finish(self, mut fft: Vec<f64>) -> Result<()> {
         let Self {
+            project,
             settings,
             fft_settings,
-            title,
             x_label: _,
             y_label: _,
             n_data,
@@ -722,12 +729,13 @@ impl<'a> PreparedFft<'a> {
         // Output FFT
         info!("Storing FFT for {src}:'{name}'");
         save(
-            &title,
+            &project.title,
             name,
             "fft",
             &settings.file.dest,
             "Frequency",
             "FFT Amplitude",
+            project.gnuplot,
             &x[start_idx..end_idx],
             &fft[start_idx..end_idx],
         )?;
@@ -738,8 +746,8 @@ impl<'a> PreparedFft<'a> {
 
 #[derive(Clone, Debug, PartialEq)]
 struct Prepared<'a> {
+    project: &'a Project,
     settings: &'a Settings,
-    title: String,
     x_label: String,
     y_label: String,
     xy: XY,
@@ -747,8 +755,8 @@ struct Prepared<'a> {
 
 #[derive(Clone, Debug, PartialEq)]
 struct Preprocessed<'a> {
+    project: &'a Project,
     settings: &'a Settings,
-    title: String,
     x_label: String,
     y_label: String,
     xy: MonotonicXY,
@@ -756,8 +764,8 @@ struct Preprocessed<'a> {
 
 #[derive(Clone, Debug, PartialEq)]
 struct Processed<'a> {
+    project: &'a Project,
     settings: &'a Settings,
-    title: String,
     x_label: String,
     y_label: String,
     x: Vec<f64>,
@@ -766,9 +774,9 @@ struct Processed<'a> {
 
 #[derive(Clone, Debug, PartialEq)]
 struct PreparedFft<'a> {
+    project: &'a Project,
     settings: &'a Settings,
     fft_settings: &'a Fft,
-    title: String,
     x_label: String,
     y_label: String,
     n_data: usize,
@@ -784,6 +792,7 @@ fn save(
     dst: &str,
     x_label: &str,
     y_label: &str,
+    plot: bool,
     x: &[f64],
     y: &[f64],
 ) -> Result<()> {
@@ -797,11 +806,18 @@ fn save(
     let png_path = format!(
         "output/{sanitized_project}/{sanitized_name}/{sanitized_title}/{sanitized_dst}.png"
     );
+    let extra_dirs = match PathBuf::from(sanitized_dst).parent() {
+        Some(extra_dirs) => format!("/{}", extra_dirs.to_string_lossy()),
+        None => format!(""),
+    };
     let _ = std::fs::create_dir_all(format!(
-        "output/{sanitized_project}/{sanitized_name}/{sanitized_title}"
+        "output/{sanitized_project}/{sanitized_name}/{sanitized_title}{}",
+        extra_dirs,
     ));
     output::store_csv(x, y, &csv_path)?;
-    output::plot_csv(&csv_path, title, x_label, y_label, &png_path)?;
+    if plot {
+        output::plot_csv(&csv_path, title, x_label, y_label, &png_path)?;
+    }
     Ok(())
 }
 
