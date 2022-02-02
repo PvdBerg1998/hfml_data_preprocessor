@@ -30,11 +30,11 @@ plot = true
 #
 # Possible values:
 # - "csv"       : Decimal representation in CSV format
-# - "msgpack"   : MessagePack binary, containing two chained arrays: x and y.
+# - "messagepack"   : MessagePack binary, containing two chained arrays: x and y.
 #
-# Recommended: "msgpack"
-# Default: "msgpack"
-format = "msgpack"
+# Recommended: "messagepack"
+# Default: "messagepack"
+format = "messagepack"
 
 # Optional: multithreading toggle.
 # This improves performance by using all CPU cores,

@@ -19,6 +19,7 @@
 use crate::has_dup;
 use anyhow::ensure;
 use anyhow::Error;
+use anyhow::Result;
 use gsl_rust::filter;
 use gsl_rust::sorting;
 use std::collections::HashMap;
@@ -34,12 +35,23 @@ impl FromStr for Data {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Values are tab separated
-        let headers = s
+        let split = s
             .lines()
-            .map(|line| line.trim().split_ascii_whitespace())
-            .flatten()
-            .take_while(|&entry| fast_float::parse::<f64, _>(entry).is_err())
+            .flat_map(|line| line.trim().split_ascii_whitespace())
+            .collect::<Vec<_>>();
+
+        // Values are tab separated
+        // We define a header to be a string starting with an element of [a,z] u [A,Z].
+        let headers = split
+            .iter()
+            .copied()
+            .take_while(|&entry| {
+                entry
+                    .chars()
+                    .next()
+                    .map(|c| c.is_ascii_alphabetic())
+                    .unwrap_or(false)
+            })
             .collect::<Vec<_>>();
 
         ensure!(!has_dup(&headers), "header contains duplicate values");
@@ -47,13 +59,13 @@ impl FromStr for Data {
         // Split data into columns
         let mut data = HashMap::new();
         for (i, &header) in headers.iter().enumerate() {
-            let column = s
-                .lines()
-                .flat_map(|line| line.trim().split_ascii_whitespace())
-                .filter_map(|entry| fast_float::parse::<f64, _>(entry).ok())
+            let column = split
+                .iter()
+                .skip(headers.len())
                 .skip(i)
                 .step_by(headers.len())
-                .collect::<Vec<f64>>();
+                .map(|entry| fast_float::parse::<f64, _>(entry).map_err(|e| e.into()))
+                .collect::<Result<Vec<f64>>>()?;
             data.insert(String::from(header), column);
         }
 
