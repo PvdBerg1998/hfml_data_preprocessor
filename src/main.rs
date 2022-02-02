@@ -701,8 +701,8 @@ impl<'a> PreparedFft<'a> {
         info!("FFT postprocessing file '{src}': dataset '{name}'");
 
         // Normalize
-        debug!("Normalizing FFT by 1/{n_data}^2");
-        let normalisation = (1.0 / n_data as f64).powi(2);
+        debug!("Normalizing FFT by 1/{n_data}");
+        let normalisation = 1.0 / n_data as f64;
         fft.iter_mut().for_each(|y| {
             *y *= normalisation;
         });
