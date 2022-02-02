@@ -3,7 +3,7 @@ authors = ["Pim van den Berg"]
 edition = "2021"
 license-file = "LICENSE"
 name = "hfml_data_preprocessor"
-version = "0.1.0"
+version = "1.0.0"
 
 [dependencies]
 anyhow = "1.0.52"
@@ -27,9 +27,9 @@ toml = "0.5.8"
 
 [profile.release]
 # Maximum optimization
-#codegen-units = 1
+codegen-units = 1
 lto = "fat"
-# Keep debug info
-debug = true
+# Keep debug info?
+debug = false
 # Prefer a panic over UB
 overflow-checks = true
