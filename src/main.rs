@@ -182,7 +182,7 @@ fn _main() -> Result<()> {
 
     // Calculate minimum dx based interpolation amounts per variable per file
     let n_per_var = preprocessed
-        .par_iter()
+        .iter()
         .filter(|preprocessed| {
             // If we are not interpolating this data pair,
             // it shouldn't contribute to the stats.
@@ -374,13 +374,13 @@ impl<'a> Prepared<'a> {
         // Output raw data
         debug!("Storing raw data for '{src}':'{name}'");
         save(
-            &project.title,
+            project,
             name,
             "raw",
             &settings.file.dest,
             &x_label,
             &y_label,
-            project.gnuplot,
+            project.plot,
             xy.x(),
             xy.y(),
         )?;
@@ -481,13 +481,13 @@ impl<'a> Prepared<'a> {
         // Output preprocessed data
         debug!("Storing preprocessed data for '{src}':'{name}'");
         save(
-            &project.title,
+            project,
             name,
             "preprocessed",
             &settings.file.dest,
             &x_label,
             &y_label,
-            project.gnuplot,
+            project.plot,
             xy.x(),
             xy.y(),
         )?;
@@ -500,7 +500,7 @@ impl<'a> Prepared<'a> {
             // Output inverted data
             debug!("Storing inverted data for '{src}':'{name}'");
             save(
-                &project.title,
+                project,
                 name,
                 "inverted",
                 &settings.file.dest,
@@ -602,7 +602,7 @@ impl<'a> Preprocessed<'a> {
         // Output post interpolation data
         debug!("Storing post-interpolation data for '{src}':'{name}'");
         save(
-            &project.title,
+            project,
             name,
             "post interpolation",
             &settings.file.dest,
@@ -758,7 +758,7 @@ impl<'a> PreparedFft<'a> {
         // Output FFT
         info!("Storing FFT for '{src}':'{name}'");
         save(
-            &project.title,
+            project,
             name,
             "fft",
             &settings.file.dest,
@@ -815,7 +815,7 @@ struct PreparedFft<'a> {
 }
 
 fn save(
-    project: &str,
+    project: &Project,
     name: &str,
     title: &str,
     dst: &str,
@@ -825,27 +825,49 @@ fn save(
     x: &[f64],
     y: &[f64],
 ) -> Result<()> {
-    let sanitized_project = project.replace(' ', "_");
+    let sanitized_project = project.title.replace(' ', "_");
     let sanitized_name = name.replace(' ', "_");
     let sanitized_title = title.replace(' ', "_");
     let sanitized_dst = dst.replace(' ', "_");
-    let csv_path = format!(
-        "output/{sanitized_project}/{sanitized_name}/{sanitized_title}/{sanitized_dst}.csv"
-    );
-    let png_path = format!(
-        "output/{sanitized_project}/{sanitized_name}/{sanitized_title}/{sanitized_dst}.png"
-    );
-    let extra_dirs = match PathBuf::from(sanitized_dst).parent() {
+
+    let extra_dirs = match PathBuf::from(&sanitized_dst).parent() {
         Some(extra_dirs) => format!("/{}", extra_dirs.to_string_lossy()),
         None => format!(""),
     };
+
     let _ = std::fs::create_dir_all(format!(
         "output/{sanitized_project}/{sanitized_name}/{sanitized_title}{}",
         extra_dirs,
     ));
-    output::store_csv(x, y, &csv_path)?;
+
+    match project.format {
+        Format::CSV => output::store_csv(
+            x,
+            y,
+            format!(
+                "output/{sanitized_project}/{sanitized_name}/{sanitized_title}/{sanitized_dst}.csv"
+            ),
+        )?,
+        Format::MessagePack => output::store_messagepack(
+            x,
+            y,
+            format!(
+                "output/{sanitized_project}/{sanitized_name}/{sanitized_title}/{sanitized_dst}.msg"
+            ),
+        )?,
+    }
+
     if plot {
-        output::plot_csv(&csv_path, title, x_label, y_label, &png_path)?;
+        output::plot(
+            x,
+            y,
+            title,
+            x_label,
+            y_label,
+            format!(
+                "output/{sanitized_project}/{sanitized_name}/{sanitized_title}/{sanitized_dst}.png"
+            ),
+        )?;
     }
     Ok(())
 }

@@ -3,7 +3,7 @@ authors = ["Pim van den Berg"]
 edition = "2021"
 license-file = "LICENSE"
 name = "hfml_data_preprocessor"
-version = "1.2.1"
+version = "1.3.0"
 
 [dependencies]
 anyhow = "1.0.52"
@@ -16,11 +16,14 @@ if_chain = "1.0.2"
 itertools = "0.10.3"
 log = "0.4.14"
 num-complex = "0.4"
+plotters = {version = "0.3.1", default-features = false, features = ["line_series", "bitmap_backend", "bitmap_encoder", "ttf"]}
 rayon = "1.5.1"
+rmp = "0.8.10"
 ryu = "1.0.9"
 serde = {version = "1.0", features = ["derive"]}
 simplelog = "0.11.2"
 toml = "0.5.8"
+
 #bincode = "1.3.3"
 #convolve = { version = "*", path = "../convolve" }
 #sled = { version = "0.34.7", features = ["compression"] }
@@ -29,10 +32,6 @@ toml = "0.5.8"
 built = {version = "0.5.1", features = ["chrono"]}
 
 [profile.release]
-# Maximum optimization
 codegen-units = 1
+debug = true
 lto = "fat"
-# Keep debug info?
-debug = false
-# Prefer a panic over UB
-overflow-checks = true

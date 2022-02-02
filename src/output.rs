@@ -16,21 +16,21 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-use anyhow::ensure;
 use anyhow::Result;
-use std::fmt::Display;
+use plotters::prelude::*;
 use std::fmt::Write as FmtWrite;
 use std::io::Write as IoWrite;
-use std::process::Command;
-use std::process::Stdio;
 use std::{fs::File, path::Path};
 
 pub fn store_csv<P: AsRef<Path>>(x: &[f64], y: &[f64], path: P) -> Result<()> {
     assert_eq!(x.len(), y.len());
+
     // Preallocate string of size 2^23 ~ 8 MB
     let mut w = String::with_capacity(2usize.pow(23));
+
     let mut x_buf = ryu::Buffer::new();
     let mut y_buf = ryu::Buffer::new();
+
     for (x, y) in x.iter().zip(y.iter()) {
         // Assume we only deal with finite values
         let x = x_buf.format_finite(*x);
@@ -42,53 +42,84 @@ pub fn store_csv<P: AsRef<Path>>(x: &[f64], y: &[f64], path: P) -> Result<()> {
         let _ = w.write_str(y);
         let _ = w.write_char('\n');
     }
+
     // Write to file in one go
     let mut f = File::create(path)?;
     f.set_len(w.len() as u64)?;
     f.write_all(w.as_bytes())?;
+
     Ok(())
 }
 
-pub fn plot_csv<P: AsRef<Path> + Display>(
-    csv: P,
+pub fn store_messagepack<P: AsRef<Path>>(x: &[f64], y: &[f64], path: P) -> Result<()> {
+    assert_eq!(x.len(), y.len());
+
+    // Preallocate estimated amount of bytes
+    // MessagePack spec: 9 bytes per f64
+    // Add 64 bytes extra to have plenty of space for padding/markers/...
+    let mut w = Vec::with_capacity(x.len() * 8 * 2 + 64);
+
+    rmp::encode::write_array_len(&mut w, x.len() as u32)?;
+    for x in x {
+        rmp::encode::write_f64(&mut w, *x)?;
+    }
+
+    rmp::encode::write_array_len(&mut w, y.len() as u32)?;
+    for y in y {
+        rmp::encode::write_f64(&mut w, *y)?;
+    }
+
+    // Write to file in one go
+    let mut f = File::create(path)?;
+    f.set_len(w.len() as u64)?;
+    f.write_all(&w)?;
+
+    Ok(())
+}
+
+pub fn plot<P: AsRef<Path>>(
+    x: &[f64],
+    y: &[f64],
     title: &str,
-    xlabel: &str,
-    ylabel: &str,
+    x_label: &str,
+    y_label: &str,
     out: P,
 ) -> Result<()> {
-    let title = title.replace('_', r"\_");
-    let xlabel = xlabel.replace('_', r"\_");
-    let ylabel = ylabel.replace('_', r"\_");
-
     let _ = std::fs::remove_file(&out);
 
-    // Build gnuplot source
-    let source = format!(
-        "\
-set terminal png size 640,480
-set output '{out}'
-set datafile separator ','
-set title '{title}'
-set xlabel '{xlabel}'
-set ylabel '{ylabel}'
-set autoscale xy
-set key off
-plot '{csv}' using 1:2 with lines lw 2
-set output
-exit"
-    );
+    let xmin = *x.first().unwrap();
+    let xmax = *x.last().unwrap();
+    let ymin = *y.iter().min_by_key(|&&f| float_ord::FloatOrd(f)).unwrap();
+    let ymax = *y.iter().max_by_key(|&&f| float_ord::FloatOrd(f)).unwrap();
 
-    // Spawn gnuplot process
-    let mut child = Command::new("gnuplot")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .spawn()?;
-    let mut stdin = child.stdin.take().expect("piped stdin");
+    let root = BitMapBackend::new(&out, (640, 640)).into_drawing_area();
+    root.fill(&WHITE)?;
 
-    stdin.write_all(source.as_bytes())?;
-    drop(stdin);
+    const FONT_STYLE: (&str, u32) = ("sans-serif", 24);
 
-    ensure!(child.wait()?.success(), "gnuplot returned error code");
+    let mut chart = ChartBuilder::on(&root)
+        .caption(title, FONT_STYLE.into_font())
+        .margin(10u32)
+        .x_label_area_size(60u32)
+        .y_label_area_size(120u32)
+        .build_cartesian_2d(xmin..xmax, ymin..ymax)?;
+
+    chart
+        .configure_mesh()
+        .x_desc(x_label)
+        .y_desc(y_label)
+        .x_label_style(FONT_STYLE)
+        .y_label_style(FONT_STYLE)
+        .y_label_formatter(&|y| format!("{y:+.2e}"))
+        .axis_desc_style(FONT_STYLE)
+        .draw()?;
+
+    chart.draw_series(LineSeries::new(
+        x.iter().copied().zip(y.iter().copied()),
+        &RED,
+    ))?;
+
+    root.present()?;
 
     Ok(())
 }

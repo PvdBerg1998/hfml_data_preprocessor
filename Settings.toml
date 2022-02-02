@@ -20,14 +20,21 @@
 # All output data is stored in a folder with this name.
 title = "Test"
 
-# Use gnuplot for preliminary plotting.
-# These plots should only be used for initial investigation and checks.
-# NB. It seems that gnuplot may be broken on Windows.
-#
-# Disabling provides a massive speedup.
+# Output preliminary plots for visual inspection.
+# This applies to raw and preprocessed data.
 #
 # Default: true
-gnuplot = true
+plot = true
+
+# Data format.
+#
+# Possible values:
+# - "csv"       : Decimal representation in CSV format
+# - "msgpack"   : MessagePack binary, containing two chained arrays: x and y.
+#
+# Recommended: "msgpack"
+# Default: "msgpack"
+format = "msgpack"
 
 # Optional: multithreading toggle.
 # This improves performance by using all CPU cores,

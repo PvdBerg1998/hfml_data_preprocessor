@@ -396,9 +396,24 @@ impl Template {
 pub struct Project {
     pub title: String,
     #[serde(default = "_true")]
-    pub gnuplot: bool,
+    pub plot: bool,
+    #[serde(default)]
+    pub format: Format,
     #[serde(default = "_true")]
     pub threading: bool,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Format {
+    CSV,
+    MessagePack,
+}
+
+impl Default for Format {
+    fn default() -> Self {
+        Format::MessagePack
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
