@@ -27,8 +27,8 @@ use std::{fs::File, path::Path};
 
 pub fn store_csv<P: AsRef<Path>>(x: &[f64], y: &[f64], path: P) -> Result<()> {
     assert_eq!(x.len(), y.len());
-    // Preallocate string of size 2^22 ~ 4 MB
-    let mut w = String::with_capacity(2usize.pow(22));
+    // Preallocate string of size 2^23 ~ 8 MB
+    let mut w = String::with_capacity(2usize.pow(23));
     let mut x_buf = ryu::Buffer::new();
     let mut y_buf = ryu::Buffer::new();
     for (x, y) in x.iter().zip(y.iter()) {
@@ -40,6 +40,7 @@ pub fn store_csv<P: AsRef<Path>>(x: &[f64], y: &[f64], path: P) -> Result<()> {
         let _ = w.write_str(x);
         let _ = w.write_char(',');
         let _ = w.write_str(y);
+        let _ = w.write_char('\n');
     }
     // Write to file in one go
     let mut f = File::create(path)?;
