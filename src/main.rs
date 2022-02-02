@@ -494,7 +494,7 @@ impl<'a> Prepared<'a> {
                 &settings.file.dest,
                 &x_label,
                 &y_label,
-                project.gnuplot,
+                false,
                 xy.x(),
                 xy.y(),
             )?;
@@ -596,7 +596,7 @@ impl<'a> Preprocessed<'a> {
             &settings.file.dest,
             &x_label,
             &y_label,
-            project.gnuplot,
+            false,
             &x,
             &y,
         )?;
@@ -751,7 +751,7 @@ impl<'a> PreparedFft<'a> {
             &settings.file.dest,
             "Frequency",
             "FFT Amplitude",
-            project.gnuplot,
+            false,
             &x[start_idx..end_idx],
             &fft[start_idx..end_idx],
         )?;
