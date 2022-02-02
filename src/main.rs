@@ -298,6 +298,9 @@ fn _main() -> Result<()> {
         };
     }
 
+    // Performance hack: intentionally leak memory to avoid drop
+    std::mem::forget(data);
+
     let end = Instant::now();
     info!("Finished in {} ms", (end - start).as_millis());
 
@@ -721,7 +724,7 @@ impl<'a> PreparedFft<'a> {
             n_data,
             n_pad,
             x,
-            y: _,
+            y,
         } = self;
         let name = &settings.extract.name;
         let src = settings.file.source.as_str();
@@ -768,6 +771,11 @@ impl<'a> PreparedFft<'a> {
             &x[start_idx..end_idx],
             &fft,
         )?;
+
+        // Performance hack: intentionally leak memory to avoid drop
+        std::mem::forget(fft);
+        std::mem::forget(x);
+        std::mem::forget(y);
 
         Ok(())
     }
