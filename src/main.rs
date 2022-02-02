@@ -610,7 +610,6 @@ impl<'a> Processed<'a> {
 
         info!("Preparing file '{src}': dataset '{name}' for FFT");
 
-        // FFT
         // Parse and process one of:
         // - "n"
         // - log2("2^n")
@@ -702,7 +701,7 @@ impl<'a> PreparedFft<'a> {
         info!("FFT postprocessing file '{src}': dataset '{name}'");
 
         // Normalize
-        debug!("Normalizing FFT by 1/{n_data}");
+        debug!("Normalizing FFT by 1/{n_data}^2");
         let normalisation = (1.0 / n_data as f64).powi(2);
         fft.iter_mut().for_each(|y| {
             *y *= normalisation;
