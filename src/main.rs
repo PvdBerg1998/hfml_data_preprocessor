@@ -281,7 +281,15 @@ fn _main() -> Result<()> {
             prepared
                 .into_par_iter()
                 .zip(fft)
-                .try_for_each(|(prepared, fft)| prepared.finish(fft))?;
+                .try_for_each(|(prepared, fft)| -> Result<()> {
+                    prepared.finish(&fft)?;
+
+                    // Performance hack: intentionally leak memory to avoid drop
+                    std::mem::forget(fft);
+                    std::mem::forget(prepared);
+
+                    Ok(())
+                })?;
         } else {
             prepared
                 .into_par_iter()
@@ -293,7 +301,13 @@ fn _main() -> Result<()> {
                     fft::fft64_packed(&mut prepared.y)?;
                     let fft = fft::fft64_unpack(&prepared.y);
 
-                    prepared.finish(fft)
+                    prepared.finish(&fft)?;
+
+                    // Performance hack: intentionally leak memory to avoid drop
+                    std::mem::forget(fft);
+                    std::mem::forget(prepared);
+
+                    Ok(())
                 })?;
         };
     }
@@ -714,7 +728,7 @@ impl<'a> Processed<'a> {
 }
 
 impl<'a> PreparedFft<'a> {
-    fn finish(self, fft: Vec<Complex64>) -> Result<()> {
+    fn finish(&self, fft: &[Complex64]) -> Result<()> {
         let Self {
             project,
             settings,
@@ -752,9 +766,9 @@ impl<'a> PreparedFft<'a> {
         // Take absolute value and normalize
         // NB. Do this after truncation to save a huge amount of work
         debug!("Normalizing FFT by 1/{n_data}");
-        let normalisation = 1.0 / n_data as f64;
+        let normalisation = 1.0 / *n_data as f64;
         let fft = fft[start_idx..end_idx]
-            .into_iter()
+            .iter()
             .map(|y| y.norm() * normalisation)
             .collect::<Vec<_>>();
 
@@ -771,11 +785,6 @@ impl<'a> PreparedFft<'a> {
             &x[start_idx..end_idx],
             &fft,
         )?;
-
-        // Performance hack: intentionally leak memory to avoid drop
-        std::mem::forget(fft);
-        std::mem::forget(x);
-        std::mem::forget(y);
 
         Ok(())
     }
