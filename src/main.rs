@@ -169,10 +169,12 @@ fn _main() -> Result<()> {
     // Prepare and preprocess data in parallel
     let preprocessed = settings
         .par_iter()
-        .map(|settings| {
+        .filter_map(|settings| {
             let data = &data[settings.file.source.as_str()];
-            settings.prepare(data, &project)?.preprocess()
+            // None's are ignored: they correspond to missing columns which is treated as a soft error
+            settings.prepare(data, &project).transpose()
         })
+        .map(|prepared| prepared.and_then(|prepared| prepared.preprocess()))
         .collect::<Result<Vec<_>>>()?;
 
     info!("Calculating automatic interpolation statistics");
@@ -306,7 +308,7 @@ impl Settings {
         &'settings self,
         data: &'data Data,
         project: &'settings Project,
-    ) -> Result<Prepared<'data>> {
+    ) -> Result<Option<Prepared<'data>>> {
         let settings = self;
         let Extract { name, x, y } = &settings.extract;
         let src = settings.file.source.as_str();
@@ -314,14 +316,14 @@ impl Settings {
         info!("Preparing file '{src}': dataset '{name}'");
 
         // Check if the given names actually correspond to existing data columns
-        ensure!(
-            data.contains(x),
-            "specified x column '{x}' for dataset '{name}' does not exist in file '{src}'"
-        );
-        ensure!(
-            data.contains(y),
-            "specified y column '{y}' for dataset '{name}' does not exist in file '{src}'"
-        );
+        if !data.contains(x) {
+            warn!("specified x column '{x}' for dataset '{name}' does not exist in file '{src}'");
+            return Ok(None);
+        }
+        if !data.contains(y) {
+            warn!("specified y column '{y}' for dataset '{name}' does not exist in file '{src}'");
+            return Ok(None);
+        }
 
         // Extract the columns
         info!("Extracting dataset '{name}' (x='{x}', y='{y}')");
@@ -336,13 +338,13 @@ impl Settings {
         let x_label = x.to_owned();
         let y_label = y.to_owned();
 
-        Ok(Prepared {
+        Ok(Some(Prepared {
             project,
             settings,
             x_label,
             y_label,
             xy,
-        })
+        }))
     }
 }
 
