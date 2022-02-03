@@ -57,8 +57,8 @@ use std::{
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 struct Args {
     template: Option<PathBuf>,
-    #[clap(short = 'v')]
-    verbose: bool,
+    #[clap(short, long, parse(from_occurrences))]
+    verbose: usize,
 }
 
 fn main() {
@@ -80,10 +80,10 @@ fn _main() -> Result<()> {
         .unwrap()
         .as_millis();
     let _ = std::fs::create_dir("log");
-    let log_level = if args.verbose {
-        LevelFilter::Debug
-    } else {
-        LevelFilter::Info
+    let log_level = match args.verbose {
+        0 => LevelFilter::Warn,
+        1 => LevelFilter::Info,
+        _ => LevelFilter::Debug,
     };
     CombinedLogger::init(vec![
         TermLogger::new(
