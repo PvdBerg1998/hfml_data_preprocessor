@@ -39,11 +39,6 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
         .ok_or(anyhow!("project settings missing"))?;
     let project = <Project as Deserialize>::deserialize(project.to_owned().into_deserializer())?;
 
-    let preprocessing_default = toml::from_str::<'_, Preprocessing>("")
-        .expect("preprocessing fields dont all have defaults");
-    let processing_default =
-        toml::from_str::<'_, Processing>("").expect("processing fields dont all have defaults");
-
     let preprocessing_global = root
         .get("preprocessing")
         .and_then(|preprocessing| preprocessing.get("global"));
@@ -51,7 +46,8 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
         Some(preprocessing_global) => <Preprocessing as Deserialize>::deserialize(
             preprocessing_global.to_owned().into_deserializer(),
         )?,
-        None => preprocessing_default.clone(),
+        None => toml::from_str::<'_, Preprocessing>("")
+            .expect("preprocessing fields dont all have defaults"),
     };
 
     let processing_global = root
@@ -61,7 +57,9 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
         Some(processing_global) => <Processing as Deserialize>::deserialize(
             processing_global.to_owned().into_deserializer(),
         )?,
-        None => processing_default.clone(),
+        None => {
+            toml::from_str::<'_, Processing>("").expect("processing fields dont all have defaults")
+        }
     };
 
     let fft = root.get("fft");
@@ -158,29 +156,13 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
 
     // [processing.Vxx]
     for var in extract.iter().map(|extract| extract.name.as_str()) {
-        let preprocessing = if_chain::if_chain! {
-            if let Some(preprocessing) = root.get("preprocessing");
-            if let Some(specific) = preprocessing.get(var);
-            then {
-                Some(<Preprocessing as Deserialize>::deserialize(
-                    specific.to_owned().into_deserializer(),
-                )?)
-            } else {
-                None
-            }
-        };
+        let preprocessing = root
+            .get("preprocessing")
+            .and_then(|preprocessing| preprocessing.get(var));
 
-        let processing = if_chain::if_chain! {
-            if let Some(processing) = root.get("processing");
-            if let Some(specific) = processing.get(var);
-            then {
-                Some(<Processing as Deserialize>::deserialize(
-                    specific.to_owned().into_deserializer(),
-                )?)
-            } else {
-                None
-            }
-        };
+        let processing = root
+            .get("processing")
+            .and_then(|processing| processing.get(var));
 
         if let Some(specific) = preprocessing {
             update_preprocessing(
@@ -188,8 +170,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
                     .iter_mut()
                     .filter(|settings| settings.extract.name == var),
                 &specific,
-                &preprocessing_default,
-            );
+            )?;
         }
         if let Some(specific) = processing {
             update_processing(
@@ -197,36 +178,19 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
                     .iter_mut()
                     .filter(|settings| settings.extract.name == var),
                 &specific,
-                &processing_default,
-            );
+            )?;
         }
     }
 
     // [processing."dir1/measurement_013"]
     for dest in files.iter().map(|file| file.dest.as_str()) {
-        let preprocessing = if_chain::if_chain! {
-            if let Some(preprocessing) = root.get("preprocessing");
-            if let Some(specific) = preprocessing.get(dest);
-            then {
-                Some(<Preprocessing as Deserialize>::deserialize(
-                    specific.to_owned().into_deserializer(),
-                )?)
-            } else {
-                None
-            }
-        };
+        let preprocessing = root
+            .get("preprocessing")
+            .and_then(|preprocessing| preprocessing.get(dest));
 
-        let processing = if_chain::if_chain! {
-            if let Some(processing) = root.get("processing");
-            if let Some(specific) = processing.get(dest);
-            then {
-                Some(<Processing as Deserialize>::deserialize(
-                    specific.to_owned().into_deserializer(),
-                )?)
-            } else {
-                None
-            }
-        };
+        let processing = root
+            .get("processing")
+            .and_then(|processing| processing.get(dest));
 
         if let Some(specific) = preprocessing {
             update_preprocessing(
@@ -234,8 +198,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
                     .iter_mut()
                     .filter(|settings| settings.file.dest == dest),
                 &specific,
-                &preprocessing_default,
-            );
+            )?;
         }
         if let Some(specific) = processing {
             update_processing(
@@ -243,39 +206,22 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
                     .iter_mut()
                     .filter(|settings| settings.file.dest == dest),
                 &specific,
-                &processing_default,
-            );
+            )?;
         }
     }
 
     // [processing."dir1/measurement_013".Vxx]
     for dest in files.iter().map(|file| file.dest.as_str()) {
         for var in extract.iter().map(|extract| extract.name.as_str()) {
-            let preprocessing = if_chain::if_chain! {
-                if let Some(preprocessing) = root.get("preprocessing");
-                if let Some(table) = preprocessing.get(dest);
-                if let Some(specific) = table.get(var);
-                then {
-                    Some(<Preprocessing as Deserialize>::deserialize(
-                        specific.to_owned().into_deserializer(),
-                    )?)
-                } else {
-                    None
-                }
-            };
+            let preprocessing = root
+                .get("preprocessing")
+                .and_then(|preprocessing| preprocessing.get(dest))
+                .and_then(|specific| specific.get(var));
 
-            let processing = if_chain::if_chain! {
-                if let Some(processing) = root.get("processing");
-                if let Some(table) = processing.get(dest);
-                if let Some(specific) = table.get(var);
-                then {
-                    Some(<Processing as Deserialize>::deserialize(
-                        specific.to_owned().into_deserializer(),
-                    )?)
-                } else {
-                    None
-                }
-            };
+            let processing = root
+                .get("processing")
+                .and_then(|processing| processing.get(dest))
+                .and_then(|specific| specific.get(var));
 
             if let Some(specific) = preprocessing {
                 update_preprocessing(
@@ -284,8 +230,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
                         .filter(|settings| settings.file.dest == dest)
                         .filter(|settings| settings.extract.name == var),
                     &specific,
-                    &preprocessing_default,
-                );
+                )?;
             }
             if let Some(specific) = processing {
                 update_processing(
@@ -294,8 +239,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
                         .filter(|settings| settings.file.dest == dest)
                         .filter(|settings| settings.extract.name == var),
                     &specific,
-                    &processing_default,
-                );
+                )?;
             }
         }
     }
@@ -311,70 +255,68 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
 
 fn update_preprocessing<'a>(
     iter: impl Iterator<Item = &'a mut Settings>,
-    specific: &Preprocessing,
-    default: &Preprocessing,
-) {
-    let Preprocessing {
-        impulse_filter,
-        impulse_tuning,
-        masks,
-        trim_left,
-        trim_right,
-        prefactor_x,
-        prefactor_y,
-        invert_x,
-    } = specific;
-
+    specific: &toml::Value,
+) -> Result<()> {
     for settings in iter {
-        if impulse_filter != &default.impulse_filter {
-            settings.preprocessing.impulse_filter = impulse_filter.to_owned();
+        if let Some(impulse_filter) = specific.get("impulse_filter") {
+            settings.preprocessing.impulse_filter =
+                <_ as Deserialize>::deserialize(impulse_filter.to_owned().into_deserializer())?;
         }
-        if impulse_tuning != &default.impulse_tuning {
-            settings.preprocessing.impulse_tuning = impulse_tuning.to_owned();
+        if let Some(impulse_tuning) = specific.get("impulse_tuning") {
+            settings.preprocessing.impulse_tuning =
+                <_ as Deserialize>::deserialize(impulse_tuning.to_owned().into_deserializer())?;
         }
-        if masks != &default.masks {
-            settings.preprocessing.masks = masks.to_owned();
+        if let Some(masks) = specific.get("masks") {
+            settings.preprocessing.masks =
+                <_ as Deserialize>::deserialize(masks.to_owned().into_deserializer())?;
         }
-        if trim_left != &default.trim_left {
-            settings.preprocessing.trim_left = trim_left.to_owned();
+        if let Some(trim_left) = specific.get("trim_left") {
+            settings.preprocessing.trim_left = Some(<_ as Deserialize>::deserialize(
+                trim_left.to_owned().into_deserializer(),
+            )?);
         }
-        if trim_right != &default.trim_right {
-            settings.preprocessing.trim_right = trim_right.to_owned();
+        if let Some(trim_right) = specific.get("trim_right") {
+            settings.preprocessing.trim_right = Some(<_ as Deserialize>::deserialize(
+                trim_right.to_owned().into_deserializer(),
+            )?);
         }
-        if prefactor_x != &default.prefactor_x {
-            settings.preprocessing.prefactor_x = prefactor_x.to_owned();
+        if let Some(prefactor_x) = specific.get("prefactor_x") {
+            settings.preprocessing.prefactor_x =
+                <_ as Deserialize>::deserialize(prefactor_x.to_owned().into_deserializer())?;
         }
-        if prefactor_y != &default.prefactor_y {
-            settings.preprocessing.prefactor_y = prefactor_y.to_owned();
+        if let Some(prefactor_y) = specific.get("prefactor_y") {
+            settings.preprocessing.prefactor_y =
+                <_ as Deserialize>::deserialize(prefactor_y.to_owned().into_deserializer())?;
         }
-        if invert_x != &default.invert_x {
-            settings.preprocessing.invert_x = invert_x.to_owned();
+        if let Some(invert_x) = specific.get("invert_x") {
+            settings.preprocessing.invert_x =
+                <_ as Deserialize>::deserialize(invert_x.to_owned().into_deserializer())?;
         }
     }
+    Ok(())
 }
 
 fn update_processing<'a>(
     iter: impl Iterator<Item = &'a mut Settings>,
-    specific: &Processing,
-    default: &Processing,
-) {
-    let Processing {
-        interpolation,
-        interpolation_n,
-        derivative,
-    } = specific;
-
+    specific: &toml::Value,
+) -> Result<()> {
     for settings in iter {
-        if interpolation != &default.interpolation {
-            settings.processing.interpolation = interpolation.to_owned();
+        if let Some(interpolation) = specific.get("interpolation") {
+            settings.processing.interpolation = Some(<_ as Deserialize>::deserialize(
+                interpolation.to_owned().into_deserializer(),
+            )?);
         }
-        if interpolation_n != &default.interpolation_n {
-            settings.processing.interpolation_n = interpolation_n.to_owned();
+        if let Some(interpolation_n) = specific.get("interpolation_n") {
+            settings.processing.interpolation_n = Some(<_ as Deserialize>::deserialize(
+                interpolation_n.to_owned().into_deserializer(),
+            )?);
         }
-        if derivative != &default.derivative {
-            settings.processing.derivative = derivative.to_owned();
+        if let Some(derivative) = specific.get("derivative") {
+            settings.processing.derivative =
+                <_ as Deserialize>::deserialize(derivative.to_owned().into_deserializer())?;
         }
     }
+    Ok(())
 }
 
 #[derive(Clone, Debug, PartialEq)]

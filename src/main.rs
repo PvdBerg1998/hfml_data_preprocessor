@@ -738,7 +738,7 @@ impl<'a> PreparedFft<'a> {
             n_data,
             n_pad,
             x,
-            y,
+            y: _,
         } = self;
         let name = &settings.extract.name;
         let src = settings.file.source.as_str();
