@@ -59,6 +59,8 @@ pub fn store_messagepack<P: AsRef<Path>>(x: &[f64], y: &[f64], path: P) -> Resul
     // Add 64 bytes extra to have plenty of space for padding/markers/...
     let mut w = Vec::with_capacity(x.len() * 8 * 2 + 64);
 
+    rmp::encode::write_array_len(&mut w, 2)?;
+
     rmp::encode::write_array_len(&mut w, x.len() as u32)?;
     for x in x {
         rmp::encode::write_f64(&mut w, *x)?;
