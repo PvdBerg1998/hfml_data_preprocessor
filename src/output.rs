@@ -92,7 +92,7 @@ pub fn plot<P: AsRef<Path>>(
     let ymin = *y.iter().min_by_key(|&&f| float_ord::FloatOrd(f)).unwrap();
     let ymax = *y.iter().max_by_key(|&&f| float_ord::FloatOrd(f)).unwrap();
 
-    let root = BitMapBackend::new(&out, (480, 480)).into_drawing_area();
+    let root = BitMapBackend::new(&out, (640, 480)).into_drawing_area();
     root.fill(&WHITE)?;
 
     const FONT_STYLE: (&str, u32) = ("sans-serif", 24);
