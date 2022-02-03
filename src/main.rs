@@ -460,11 +460,11 @@ impl<'a> Prepared<'a> {
 
         if settings.preprocessing.invert_x {
             ensure!(
-                trim_left > 0.0,
+                trim_left != 0.0,
                 "Can't trim to zero when inverting x for '{src}':'{name}'"
             );
             ensure!(
-                trim_right > 0.0,
+                trim_right != 0.0,
                 "Can't trim to zero when inverting x for '{src}':'{name}'"
             );
         }
