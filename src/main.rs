@@ -381,13 +381,6 @@ impl<'a> Prepared<'a> {
 
         info!("Preprocessing file '{src}': dataset '{name}'");
 
-        let n_log2 = (xy.len() as f64).log2();
-        debug!("Dataset '{src}':'{name}' length: ~2^{n_log2:.2}");
-
-        // Monotonicity
-        debug!("Making '{src}':'{name}' monotonic");
-        let mut xy = xy.into_monotonic();
-
         // Output raw data
         debug!("Storing raw data for '{src}':'{name}'");
         save(
@@ -401,6 +394,13 @@ impl<'a> Prepared<'a> {
             xy.x(),
             xy.y(),
         )?;
+
+        let n_log2 = (xy.len() as f64).log2();
+        debug!("Dataset '{src}':'{name}' length: ~2^{n_log2:.2}");
+
+        // Monotonicity
+        debug!("Making '{src}':'{name}' monotonic");
+        let mut xy = xy.into_monotonic();
 
         // Impulse filtering
         // Do this before trimming, such that edge artifacts may be cut off afterwards
@@ -604,31 +604,31 @@ impl<'a> Preprocessed<'a> {
                 let dx = xy.domain_len() / n_interp as f64;
                 let x_eval = (0..n_interp)
                     .map(|i| (i as f64) * dx + xy.left_x())
-                    .collect::<Box<[_]>>();
+                    .collect::<Vec<_>>();
                 let y_eval =
                     interpolate_monotonic((*algorithm).into(), deriv, xy.x(), xy.y(), &x_eval)?;
 
-                (Vec::from(x_eval), y_eval)
+                // Output post interpolation data
+                debug!("Storing post-interpolation data for '{src}':'{name}'");
+                save(
+                    project,
+                    name,
+                    "post interpolation",
+                    &settings.file.dest,
+                    &x_label,
+                    &y_label,
+                    false,
+                    &x_eval,
+                    &y_eval,
+                )?;
+
+                (x_eval, y_eval)
             }
             (Some(_), None) => {
                 bail!("Missing interpolation length specification");
             }
             (None, Some(_)) | (None, None) => xy.take_xy(),
         };
-
-        // Output post interpolation data
-        debug!("Storing post-interpolation data for '{src}':'{name}'");
-        save(
-            project,
-            name,
-            "post interpolation",
-            &settings.file.dest,
-            &x_label,
-            &y_label,
-            false,
-            &x,
-            &y,
-        )?;
 
         Ok(Processed {
             project,
