@@ -752,16 +752,18 @@ impl<'a> PreparedFft<'a> {
             debug!("Truncating FFT to {lower_cutoff}..{upper_cutoff} 'Hz' for '{src}':'{name}'");
         }
 
-        // Sampled frequencies : k/(N dt)
-        // Note: this includes zero padding.
         let n = n_data + n_pad;
         let dt = x[1] - x[0];
-        let x = (0..fft.len())
-            .map(|i| i as f64 / (dt * n as f64))
-            .collect::<Box<[f64]>>();
 
         let start_idx = ((lower_cutoff * dt * n as f64).ceil() as usize).min(fft.len());
         let end_idx = ((upper_cutoff * dt * n as f64).ceil() as usize).min(fft.len());
+
+        // Sampled frequencies : k/(N dt)
+        // Note: this includes zero padding.
+        let freq_normalisation = 1.0 / (dt * n as f64);
+        let x = (start_idx..end_idx)
+            .map(|i| i as f64 * freq_normalisation)
+            .collect::<Vec<_>>();
 
         // Take absolute value and normalize
         // NB. Do this after truncation to save a huge amount of work
@@ -782,7 +784,7 @@ impl<'a> PreparedFft<'a> {
             "Frequency",
             "FFT Amplitude",
             false,
-            &x[start_idx..end_idx],
+            &x,
             &fft,
         )?;
 

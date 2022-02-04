@@ -3,7 +3,7 @@ authors = ["Pim van den Berg"]
 edition = "2021"
 license-file = "LICENSE"
 name = "hfml_data_preprocessor"
-version = "1.5.2"
+version = "1.5.4"
 
 [dependencies]
 anyhow = "1.0.52"
@@ -21,6 +21,7 @@ rmp = "0.8.10"
 ryu = "1.0.9"
 serde = {version = "1.0", features = ["derive"]}
 simplelog = "0.11.2"
+smallvec = {version = "1.8.0", features = ["const_generics", "const_new", "union", "write"]}
 toml = "0.5.8"
 
 #bincode = "1.3.3"

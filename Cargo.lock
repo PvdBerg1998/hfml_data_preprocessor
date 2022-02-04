@@ -557,7 +557,7 @@ dependencies = [
 
 [[package]]
 name = "hfml_data_preprocessor"
-version = "1.5.2"
+version = "1.5.4"
 dependencies = [
  "anyhow",
  "built",
@@ -575,6 +575,7 @@ dependencies = [
  "ryu",
  "serde",
  "simplelog",
+ "smallvec",
  "toml",
 ]
 
@@ -1122,6 +1123,12 @@ dependencies = [
  "log",
  "termcolor",
 ]
+
+[[package]]
+name = "smallvec"
+version = "1.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2dd574626839106c320a323308629dcb1acfc96e32a8cba364ddc61ac23ee83"
 
 [[package]]
 name = "strsim"

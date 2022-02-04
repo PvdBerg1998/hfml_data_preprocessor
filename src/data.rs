@@ -22,9 +22,13 @@ use anyhow::Error;
 use anyhow::Result;
 use gsl_rust::filter;
 use gsl_rust::sorting;
+use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
+
+// Up to this amount can be stored per line without another heap allocation
+const HEADER_GUESS: usize = 16;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Data {
@@ -35,41 +39,53 @@ impl FromStr for Data {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let split = s
-            .lines()
-            .flat_map(|line| line.trim().split_ascii_whitespace())
-            .collect::<Vec<_>>();
-
         // Values are tab separated
-        // We define a header to be a string starting with an element of [a,z] u [A,Z].
-        let headers = split
-            .iter()
-            .copied()
-            .take_while(|&entry| {
-                entry
-                    .chars()
-                    .next()
-                    .map(|c| c.is_ascii_alphabetic())
-                    .unwrap_or(false)
-            })
-            .collect::<Vec<_>>();
+        let mut headers = vec![];
+        let mut header_lines = 0;
+
+        for line in s.lines() {
+            header_lines += 1;
+
+            // Check if line contains only non-numerical values
+            let split = line.trim().split_ascii_whitespace().collect::<Vec<_>>();
+            if split
+                .iter()
+                .all(|&entry| fast_float::parse::<f64, _>(entry).is_err())
+            {
+                headers.extend_from_slice(&split);
+            } else {
+                break;
+            }
+        }
+
+        // Remove mutability
+        let headers = headers;
+        let header_lines = header_lines;
 
         ensure!(!has_dup(&headers), "header contains duplicate values");
 
-        // Split data into columns
-        let mut data = HashMap::new();
-        for (i, &header) in headers.iter().enumerate() {
-            let column = split
-                .iter()
-                .skip(headers.len())
-                .skip(i)
-                .step_by(headers.len())
-                .map(|entry| fast_float::parse::<f64, _>(entry).map_err(|e| e.into()))
-                .collect::<Result<Vec<f64>>>()?;
-            data.insert(String::from(header), column);
+        let data = s
+            .lines()
+            .skip(header_lines)
+            .map(|line| line.trim().split_ascii_whitespace().collect())
+            .collect::<Vec<SmallVec<[&str; HEADER_GUESS]>>>();
+
+        for (i, line) in data.iter().enumerate() {
+            ensure!(line.len() == headers.len(), "missing column at line {i}");
         }
 
-        Ok(Data { data })
+        // Split data into columns
+        let mut out = HashMap::new();
+        for (i, &header) in headers.iter().enumerate() {
+            let column = data
+                .iter()
+                .map(|line| line[i])
+                .map(|entry| fast_float::parse::<f64, _>(entry).map_err(|e| e.into()))
+                .collect::<Result<Vec<f64>>>()?;
+            out.insert(String::from(header), column);
+        }
+
+        Ok(Data { data: out })
     }
 }
 
@@ -170,6 +186,12 @@ impl XY {
 
     pub fn into_monotonic(self) -> MonotonicXY {
         let XY { mut x, mut y } = self;
+
+        if *x.last().unwrap() < 0.0 {
+            // Guess that the dataset is going to be flipped by sorting
+            x.reverse();
+            y.reverse();
+        }
 
         sorting::sort_xy(&mut x, &mut y);
 
