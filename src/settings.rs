@@ -169,7 +169,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
                 settings
                     .iter_mut()
                     .filter(|settings| settings.extract.name == var),
-                &specific,
+                specific,
             )?;
         }
         if let Some(specific) = processing {
@@ -177,7 +177,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
                 settings
                     .iter_mut()
                     .filter(|settings| settings.extract.name == var),
-                &specific,
+                specific,
             )?;
         }
     }
@@ -197,7 +197,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
                 settings
                     .iter_mut()
                     .filter(|settings| settings.file.dest == dest),
-                &specific,
+                specific,
             )?;
         }
         if let Some(specific) = processing {
@@ -205,7 +205,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
                 settings
                     .iter_mut()
                     .filter(|settings| settings.file.dest == dest),
-                &specific,
+                specific,
             )?;
         }
     }
@@ -229,7 +229,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
                         .iter_mut()
                         .filter(|settings| settings.file.dest == dest)
                         .filter(|settings| settings.extract.name == var),
-                    &specific,
+                    specific,
                 )?;
             }
             if let Some(specific) = processing {
@@ -238,7 +238,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
                         .iter_mut()
                         .filter(|settings| settings.file.dest == dest)
                         .filter(|settings| settings.extract.name == var),
-                    &specific,
+                    specific,
                 )?;
             }
         }
@@ -348,7 +348,7 @@ pub struct Project {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Format {
-    CSV,
+    Csv,
     MessagePack,
 }
 
@@ -454,6 +454,24 @@ pub struct Fft {
     pub hann: bool,
     pub truncate_lower: Option<f64>,
     pub truncate_upper: Option<f64>,
+    #[serde(default)]
+    pub sweep: FftSweep,
+    pub sweep_steps: Option<usize>,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FftSweep {
+    Full,
+    Lower,
+    Upper,
+    Windows,
+}
+
+impl Default for FftSweep {
+    fn default() -> Self {
+        FftSweep::Full
+    }
 }
 
 fn _true() -> bool {

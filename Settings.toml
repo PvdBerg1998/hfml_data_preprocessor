@@ -29,7 +29,7 @@ plot = true
 # Data format.
 #
 # Possible values:
-# - "csv"       : Decimal representation in CSV format
+# - "csv"           : Decimal representation in CSV format
 # - "messagepack"   : MessagePack binary, containing two chained arrays: x and y.
 #
 # Recommended: "messagepack"
@@ -223,12 +223,32 @@ truncate_upper = 10000
 # NB. This length _includes_ the original data.
 #
 # Possible values:
-# - "n"     : direct zero padding amount. E.g. "1000". NB. This _must_ be a power of two.
+# - "n"     : direct zero padding amount. E.g. "1024". NB. This _must_ be a power of two.
 # - "2^n"   : same as "n" but a power of two.
 # - "min"   : minimum required to reach the nearest power of two.
 #
 # Recommended: near "2^20".
 zero_pad = "2^22"
+
+# Optional: FTFT (Finite Time Fourier Transform) "sweeps".
+# Warning: this creates a lot of data!
+#
+# Creates FFTs of different time domain regions.
+# Possible values:
+# - "full"      : No sweeping, use full data range.
+# - "lower"     : Sweep lower boundary, keep upper boundary fixed.
+# - "upper"     : Sweep upper boundary, keep lower boundary fixed.
+# - "windows"   : Moving window, with 50% overlap and a width defined below.
+#
+# Default: "full"
+sweep = "upper"
+
+# Sweep step amount.
+# Required if sweep is set and not equal to "full".
+# Must be more than 1.
+#
+# This divides the domain into n equal parts.
+sweep_steps = 1
 
 #
 # FILES

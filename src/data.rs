@@ -216,6 +216,10 @@ impl XY {
 
 #[allow(dead_code)]
 impl MonotonicXY {
+    pub fn new_unchecked(x: Vec<f64>, y: Vec<f64>) -> Self {
+        MonotonicXY { x, y }
+    }
+
     pub fn len(&self) -> usize {
         self.x.len()
     }

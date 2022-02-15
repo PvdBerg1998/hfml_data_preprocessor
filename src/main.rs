@@ -254,8 +254,58 @@ fn _main() -> Result<()> {
     if let Some(fft) = fft {
         let prepared = processed
             .into_par_iter()
-            .map(|processed| processed.prepare_fft(&fft))
-            .collect::<Result<Vec<_>>>()?;
+            .map(|processed| {
+                let left = processed.xy.left_x();
+                let right = processed.xy.right_x();
+
+                match fft.sweep {
+                    FftSweep::Full => Ok(vec![processed.prepare_fft(&fft, left, right, None)?]),
+                    FftSweep::Lower => {
+                        let steps = match fft.sweep_steps {
+                            Some(steps) => steps,
+                            None => bail!("FFT sweep steps not defined"),
+                        };
+                        ensure!(steps > 1, "FFT sweep steps must be larger than 1");
+
+                        // Sweep lower boundary while the upper boundary stays fixed
+                        let dx = (right - left) / steps as f64;
+
+                        // Iterate left boundary down, starting 1 tick left from the right side
+                        (0..steps)
+                            //.into_par_iter()
+                            .rev()
+                            .map(|i| {
+                                let left = i as f64 * dx;
+                                processed.clone().prepare_fft(&fft, left, right, Some(i))
+                            })
+                            .collect::<Result<Vec<_>>>()
+                    }
+                    FftSweep::Upper => {
+                        let steps = match fft.sweep_steps {
+                            Some(steps) => steps,
+                            None => bail!("FFT sweep steps not defined"),
+                        };
+                        ensure!(steps > 1, "FFT sweep steps must be larger than 1");
+
+                        // Sweep upper boundary while the lower boundary stays fixed
+                        let dx = (right - left) / steps as f64;
+
+                        // Iterate right boundary up, starting 1 tick right from the left side
+                        (1..=steps)
+                            //.into_par_iter()
+                            .map(|i| {
+                                let right = i as f64 * dx;
+                                processed.clone().prepare_fft(&fft, left, right, Some(i))
+                            })
+                            .collect::<Result<Vec<_>>>()
+                    }
+                    FftSweep::Windows => todo!(),
+                }
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
 
         let use_cuda = if fft.cuda {
             if cufft::gpu_count() == 0 {
@@ -284,9 +334,9 @@ fn _main() -> Result<()> {
                 .try_for_each(|(prepared, fft)| -> Result<()> {
                     prepared.finish(&fft)?;
 
-                    // Performance hack: intentionally leak memory to avoid drop
-                    std::mem::forget(fft);
-                    std::mem::forget(prepared);
+                    // // Performance hack: intentionally leak memory to avoid drop
+                    // std::mem::forget(fft);
+                    // std::mem::forget(prepared);
 
                     Ok(())
                 })?;
@@ -303,17 +353,17 @@ fn _main() -> Result<()> {
 
                     prepared.finish(&fft)?;
 
-                    // Performance hack: intentionally leak memory to avoid drop
-                    std::mem::forget(fft);
-                    std::mem::forget(prepared);
+                    // // Performance hack: intentionally leak memory to avoid drop
+                    // std::mem::forget(fft);
+                    // std::mem::forget(prepared);
 
                     Ok(())
                 })?;
         };
     }
 
-    // Performance hack: intentionally leak memory to avoid drop
-    std::mem::forget(data);
+    // // Performance hack: intentionally leak memory to avoid drop
+    // std::mem::forget(data);
 
     let end = Instant::now();
     info!("Finished in {} ms", (end - start).as_millis());
@@ -630,31 +680,47 @@ impl<'a> Preprocessed<'a> {
             (None, Some(_)) | (None, None) => xy.take_xy(),
         };
 
+        let xy = MonotonicXY::new_unchecked(x, y);
+
         Ok(Processed {
             project,
             settings,
             x_label,
             y_label,
-            x,
-            y,
+            xy,
         })
     }
 }
 
 impl<'a> Processed<'a> {
-    fn prepare_fft(self, fft_settings: &'a Fft) -> Result<PreparedFft<'a>> {
+    fn prepare_fft(
+        self,
+        fft_settings: &'a Fft,
+        domain_left: f64,
+        domain_right: f64,
+        sweep_index: Option<usize>,
+    ) -> Result<PreparedFft<'a>> {
         let Self {
             project,
             settings,
             x_label,
             y_label,
-            x,
-            mut y,
+            mut xy,
         } = self;
         let name = &settings.extract.name;
         let src = settings.file.source.as_str();
 
-        info!("Preparing file '{src}': dataset '{name}' for FFT");
+        let window_label = sweep_index
+            .map(|i| format!("window #{i}"))
+            .unwrap_or_else(|| "(full window)".to_owned());
+        info!("Preparing file '{src}': dataset '{name}' for FFT {window_label}");
+
+        // Trim domain
+        // The domain is calculated internally so we may assume its boundaries are correct
+        debug!("Trimming '{src}':'{name}' for FFT {window_label}");
+        xy.trim(domain_left, domain_right);
+
+        let (x, mut y) = xy.take_xy();
 
         // Parse and process one of:
         // - "n"
@@ -717,6 +783,7 @@ impl<'a> Processed<'a> {
             project,
             settings,
             fft_settings,
+            sweep_index,
             x_label,
             y_label,
             n_data,
@@ -733,6 +800,7 @@ impl<'a> PreparedFft<'a> {
             project,
             settings,
             fft_settings,
+            sweep_index,
             x_label: _,
             y_label: _,
             n_data,
@@ -779,7 +847,12 @@ impl<'a> PreparedFft<'a> {
         save(
             project,
             name,
-            "fft",
+            &match fft_settings.sweep {
+                FftSweep::Full => "fft".to_owned(),
+                FftSweep::Lower => format!("fft_sweep_lower_{}", sweep_index.unwrap()),
+                FftSweep::Upper => format!("fft_sweep_upper_{}", sweep_index.unwrap()),
+                FftSweep::Windows => format!("fft_sweep_window_{}", sweep_index.unwrap()),
+            },
             &settings.file.dest,
             "Frequency",
             "FFT Amplitude",
@@ -816,8 +889,7 @@ struct Processed<'a> {
     settings: &'a Settings,
     x_label: String,
     y_label: String,
-    x: Vec<f64>,
-    y: Vec<f64>,
+    xy: MonotonicXY,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -825,6 +897,7 @@ struct PreparedFft<'a> {
     project: &'a Project,
     settings: &'a Settings,
     fft_settings: &'a Fft,
+    sweep_index: Option<usize>,
     x_label: String,
     y_label: String,
     n_data: usize,
@@ -851,7 +924,7 @@ fn save(
 
     let extra_dirs = match PathBuf::from(&sanitized_dst).parent() {
         Some(extra_dirs) => format!("/{}", extra_dirs.to_string_lossy()),
-        None => format!(""),
+        None => String::new(),
     };
 
     let _ = std::fs::create_dir_all(format!(
@@ -860,7 +933,7 @@ fn save(
     ));
 
     match project.format {
-        Format::CSV => output::store_csv(
+        Format::Csv => output::store_csv(
             x,
             y,
             format!(
