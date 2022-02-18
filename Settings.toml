@@ -72,7 +72,7 @@ impulse_tuning = 1
 # Recommended: apply to a range of missing or invalid datapoints
 # Default: no masking
 masks = [
-  {left = 12, right = 15},
+  {left = 2, right = 3},
 ]
 
 # Optional: x domain trimming
@@ -81,8 +81,8 @@ masks = [
 # i.e. fully negative domains work automagically.
 #
 # Default: full domain.
-trim_left = 12
-trim_right = 32.95
+trim_left = 4
+trim_right = 15.95
 
 # Optional: multiplication of x/y with a constant.
 #
@@ -109,10 +109,10 @@ invert_x = true
 prefactor_x = -1
 
 # File specific settings (all variables)
-[preprocessing."dir1/measurement_013"]
+[preprocessing."dir1/measurement_014"]
 
 # File and variable specific settings
-[preprocessing."dir1/measurement_013".Vxx]
+[preprocessing."dir1/measurement_014".Vxx]
 
 #
 # PROCESSING
@@ -174,10 +174,10 @@ derivative = 0
 [processing.Vxx]
 
 # File specific settings (all variables)
-[processing."dir1/measurement_013"]
+[processing."dir1/measurement_014"]
 
 # File and variable specific settings
-[processing."dir1/measurement_013".Vxx]
+[processing."dir1/measurement_014".Vxx]
 derivative = 1
 
 #
@@ -248,7 +248,7 @@ sweep = "upper"
 # Must be more than 1.
 #
 # This divides the domain into n equal parts.
-sweep_steps = 1
+sweep_steps = 5
 
 #
 # FILES
@@ -257,10 +257,10 @@ sweep_steps = 1
 # Repeat this for each file you wish to process
 [[file]]
 # Raw data source file. Assumed to be in the HFML labview format
-source = "file.013.dat"
+source = "file.014.dat"
 # Output name. Choose something descriptive (sample, temperature, etc.)
 # This may contain sub directories
-dest = "dir1/measurement_013"
+dest = "dir1/measurement_014"
 
 #
 # RENAMING

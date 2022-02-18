@@ -3,7 +3,7 @@ authors = ["Pim van den Berg"]
 edition = "2021"
 license-file = "LICENSE"
 name = "hfml_data_preprocessor"
-version = "1.5.9"
+version = "1.5.10"
 
 [features]
 default = ["cuda"]

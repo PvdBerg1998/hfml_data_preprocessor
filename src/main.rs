@@ -278,7 +278,7 @@ fn _main() -> Result<()> {
                             //.into_par_iter()
                             .rev()
                             .map(|i| {
-                                let left = i as f64 * dx;
+                                let left = left + i as f64 * dx;
                                 processed.clone().prepare_fft(&fft, left, right, Some(i))
                             })
                             .collect::<Result<Vec<_>>>()
@@ -297,7 +297,7 @@ fn _main() -> Result<()> {
                         (1..=steps)
                             //.into_par_iter()
                             .map(|i| {
-                                let right = i as f64 * dx;
+                                let right = left + i as f64 * dx;
                                 processed.clone().prepare_fft(&fft, left, right, Some(i))
                             })
                             .collect::<Result<Vec<_>>>()
@@ -734,7 +734,9 @@ impl<'a> Processed<'a> {
 
         // Trim domain
         // The domain is calculated internally so we may assume its boundaries are correct
-        trace!("Trimming '{src}':'{name}' for FFT {window_label}");
+        trace!(
+            "Trimming '{src}':'{name}' for FFT {window_label} to [{domain_left}, {domain_right}]"
+        );
         xy.trim(domain_left, domain_right);
 
         let (x, mut y) = xy.take_xy();
