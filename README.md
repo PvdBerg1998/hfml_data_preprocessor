@@ -12,23 +12,42 @@ This tool is meant to quickly extract, inspect, preprocess and Fourier transform
 ### Preprocessing
 - Data x/y pair extraction
 - Header renaming
-- Domain trimming and data masking
+- Domain trimming
+- Bad data masking
 - Premultiplication
-- Impulse filtering for "popcorn noise" removal
+- Tuneable impulse filtering for "popcorn noise" removal
 - x inversion for 1/B periodic processes
-- Linear and Steffen (monotonic) spline interpolation
+- Linear interpolation and Steffen (monotonic) spline interpolation with automatic length detection and coordination to ensure uniformity in your dataset
 - First and second numerical derivative
 
 ### Output
-- Data output at each intermediate step in either CSV or MessagePack binary format
+- Data output at each intermediate step in either CSV or [MessagePack](https://msgpack.org/index.html) binary format
 - Quick 'n dirty plotting for manual inspection
+
+MessagePack is recommended because it skips converting the binary floating point data to a base 10 representation and later back again. For usage in Python, I recommend [ormsgpack](https://pypi.org/project/ormsgpack/) to decode the data. It can then be loaded into either NumPy or Pandas in the following way:
+
+```python
+import ormsgpack
+import pandas as pd
+import numpy as np
+
+with open("file.msg", "rb") as f:
+    xy = np.array(ormsgpack.unpackb(f.read()))
+    xy = np.transpose(xy)
+    df = pd.DataFrame(data=xy, columns=["x", "y"])
+```
 
 ### FFT
 - DC component removal
 - Zero padding
 - Boxcar or Hann windowing
 - Frequency domain trimming
-- FTFT (Finite Time Fourier Transform), subdomain sweeping
+- FTFT (Finite Time Fourier Transform), subdomain lower/upper/center uniform sweeping
+
+# Known issues
+- FTFT is not properly tested
+- FTFT shifted windowing is not implemented yet
+- Other filtering methods such as Savitzky-Golay are missing
 
 # Usage
 ### Settings format
@@ -58,11 +77,12 @@ When compiled with [NVIDIA CUDA](https://developer.nvidia.com/cufft) support, th
 The tool generates nested output folders, separating the data generated at each step of the process. Your typical project folder will look something like this:
 
     output/<project name>/<variable>
-        /fft
+        /raw
+        /preprocessed
         /inverted
         /post_interpolation
-        /preprocessed
-        /raw
+        /fft
+        /fft_sweep_<upper,lower,window>_<n>
     
     log/
         hfml_data_preprocessor_<unix time>.log
@@ -73,7 +93,13 @@ The tool generates nested output folders, separating the data generated at each 
     file.002.dat
     ...
 
-The interpolation step also includes taking the derivative, which is why it is treated separately from the preprocessed data. The simple, non-filtered numerical derivative will amplify high frequency noise to an extent that visual inspection becomes useless. However, this noise will mostly be in very high frequencies, meaning the spectrum of the data will be unaffected.
+The data is processed as follows and in the following order:
+- `raw`: only sorted and deduplicated, such that the x data is monotonically increasing. This is often required for filtering algorithms. All steps after this will stay monotonic.
+- `preprocessed`: after masking, filtering, premultiplication. Essentially the full preprocessing machinery except x inversion, as this makes visual comparison with the raw data near impossible.
+- `inverted`: after x inversion.
+- `post_interpolation`: after interpolation and derivative. For performance and simplicity, these two steps are implemented as a single mathematical operation. Keep in mind that linear interpolation therefore defines the second derivative to be zero everywhere. No filtering is applied, so keep in mind high frequency noise will be amplified by taking the derivative.
+- `fft`: after the Fast Fourier Transform (full domain).
+- `fft_sweep_<upper,lower,window>_<n>`: after the `n`'th FTFT window. These windows are distributed uniformly over the given data domain, after x inversion.
 
 The raw and preprocessed data may include preliminary plot generation. This facilitates the quick iteration process of changing settings, rerunning and inspecting the result.
 
