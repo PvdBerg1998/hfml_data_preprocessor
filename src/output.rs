@@ -94,6 +94,10 @@ pub fn plot<P: AsRef<Path>>(
     let ymin = *y.iter().min_by_key(|&&f| float_ord::FloatOrd(f)).unwrap();
     let ymax = *y.iter().max_by_key(|&&f| float_ord::FloatOrd(f)).unwrap();
 
+    if xmin >= xmax {
+        panic!("plotter only works with monotonically increasing data");
+    }
+
     let root = BitMapBackend::new(&out, (640, 480)).into_drawing_area();
     root.fill(&WHITE)?;
 

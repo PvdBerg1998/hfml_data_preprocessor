@@ -32,6 +32,7 @@ use anyhow::bail;
 use anyhow::ensure;
 use anyhow::Result;
 use clap::Parser;
+#[cfg(feature = "cuda")]
 use cufft_rust as cufft;
 use data::Data;
 use data::MonotonicXY;
@@ -81,9 +82,9 @@ fn _main() -> Result<()> {
         .as_millis();
     let _ = std::fs::create_dir("log");
     let log_level = match args.verbose {
-        0 => LevelFilter::Warn,
-        1 => LevelFilter::Info,
-        _ => LevelFilter::Debug,
+        0 => LevelFilter::Info,
+        1 => LevelFilter::Debug,
+        _ => LevelFilter::Trace,
     };
     CombinedLogger::init(vec![
         TermLogger::new(
@@ -92,16 +93,18 @@ fn _main() -> Result<()> {
                 .set_time_format_str("%H:%M:%S.%f")
                 .set_thread_mode(ThreadLogMode::Names)
                 .set_thread_level(LevelFilter::Error)
+                .set_location_level(LevelFilter::Off)
                 .build(),
             TerminalMode::Mixed,
             ColorChoice::Auto,
         ),
         WriteLogger::new(
-            LevelFilter::Debug,
+            LevelFilter::Trace,
             ConfigBuilder::default()
                 .set_time_format_str("%H:%M:%S.%f")
                 .set_thread_mode(ThreadLogMode::Names)
                 .set_thread_level(LevelFilter::Error)
+                .set_location_level(LevelFilter::Off)
                 .build(),
             File::create(format!("log/hfml_data_preprocessor_{unix}.log"))?,
         ),
@@ -122,7 +125,7 @@ fn _main() -> Result<()> {
     )
     .map_err(|e| anyhow!("Failed to load template: {e}"))?;
 
-    debug!("Template: {template:#?}");
+    trace!("Template: {template:#?}");
     info!("Running project '{}'", template.project.title);
 
     // Setup global thread pool
@@ -136,12 +139,12 @@ fn _main() -> Result<()> {
         .files
         .par_iter()
         .map(|file| {
-            info!("Loading file {}", file.source);
+            debug!("Loading file {}", file.source);
             let s = std::fs::read_to_string(&file.source)?;
             let mut data = s.parse::<Data>()?;
 
             // Rename columns
-            debug!("Columns: {:#?}", data.columns());
+            trace!("Columns: {:#?}", data.columns());
             for Rename { from, to } in template.rename.iter() {
                 if !data.contains(from) {
                     continue;
@@ -151,10 +154,10 @@ fn _main() -> Result<()> {
                     "cannot rename {from} to existing column {to}"
                 );
 
-                debug!("Renaming column {from} to {to}");
+                trace!("Renaming column {from} to {to}");
                 data.rename_column(&*from, &*to);
             }
-            debug!("Columns (after replacing): {:#?}", data.columns());
+            trace!("Columns (after replacing): {:#?}", data.columns());
 
             Ok((file.source.as_str(), data))
         })
@@ -178,7 +181,7 @@ fn _main() -> Result<()> {
         .map(|prepared| prepared.and_then(|prepared| prepared.preprocess()))
         .collect::<Result<Vec<_>>>()?;
 
-    info!("Calculating automatic interpolation statistics");
+    debug!("Calculating automatic interpolation statistics");
 
     // Calculate minimum dx based interpolation amounts per variable per file
     let n_per_var = preprocessed
@@ -199,7 +202,7 @@ fn _main() -> Result<()> {
         .map(|preprocessed| {
             let name = &preprocessed.settings.extract.name;
             let src = preprocessed.settings.file.source.as_str();
-            debug!("Calculating minimum delta x for all '{src}':'{name}'");
+            trace!("Calculating minimum delta x for all '{src}':'{name}'");
 
             // Loop over x, compare neighbours, find smallest interval
             let n = match preprocessed
@@ -230,13 +233,13 @@ fn _main() -> Result<()> {
         let n_mean = stats::mean(&float_ns);
         let n_stddev = stats::variance_mean(&float_ns, n_mean).sqrt();
         let n_mean_log2 = n_mean.log2().ceil() as u64;
-        debug!("Minimum dx interpolation stats for {var}: mean = {n_mean} ~ 2^{n_mean_log2}, stddev = {n_stddev:.2}");
+        trace!("Minimum dx interpolation stats for {var}: mean = {n_mean} ~ 2^{n_mean_log2}, stddev = {n_stddev:.2}");
 
         // Store the highest amount
         (var, ns.into_iter().max().unwrap())
     }).collect::<HashMap<_, _>>();
     let max_n = max_n_per_var.values().max().copied();
-    debug!("Final dx interpolation maxima: {max_n_per_var:#?}. Maximum: {max_n:#?}");
+    trace!("Final dx interpolation maxima: {max_n_per_var:#?}. Maximum: {max_n:#?}");
 
     // Process data
     let processed = preprocessed
@@ -308,46 +311,60 @@ fn _main() -> Result<()> {
             .collect::<Vec<_>>();
 
         let use_cuda = if fft.cuda {
-            if cufft::gpu_count() == 0 {
-                warn!("No CUDA capable GPUs available, using CPU instead");
+            #[cfg(feature = "cuda")]
+            {
+                if cufft::gpu_count() == 0 {
+                    warn!("No CUDA capable GPUs available, using CPU instead");
+                    false
+                } else {
+                    true
+                }
+            }
+            #[cfg(not(feature = "cuda"))]
+            {
+                warn!("CUDA support was disabled during build");
                 false
-            } else {
-                info!(
-                    "Computing batched FFTs on GPU '{}'",
-                    cufft::first_gpu_name()?
-                );
-                true
             }
         } else {
             false
         };
 
         if use_cuda {
-            let batch = prepared
-                .iter()
-                .map(|prepared| prepared.y.as_slice())
-                .collect::<Vec<_>>();
-            let fft = cufft::fft64_batch(&batch)?;
-            prepared
-                .into_par_iter()
-                .zip(fft)
-                .try_for_each(|(prepared, fft)| -> Result<()> {
-                    prepared.finish(&fft)?;
+            #[cfg(feature = "cuda")]
+            {
+                info!(
+                    "Computing batched FFTs on GPU '{}'",
+                    cufft::first_gpu_name()?
+                );
 
-                    // // Performance hack: intentionally leak memory to avoid drop
-                    // std::mem::forget(fft);
-                    // std::mem::forget(prepared);
+                let batch = prepared
+                    .iter()
+                    .map(|prepared| prepared.y.as_slice())
+                    .collect::<Vec<_>>();
+                let fft = cufft::fft64_batch(&batch)?;
+                prepared.into_par_iter().zip(fft).try_for_each(
+                    |(prepared, fft)| -> Result<()> {
+                        prepared.finish(&fft)?;
 
-                    Ok(())
-                })?;
+                        // // Performance hack: intentionally leak memory to avoid drop
+                        // std::mem::forget(fft);
+                        // std::mem::forget(prepared);
+
+                        Ok(())
+                    },
+                )?;
+            }
+            #[cfg(not(feature = "cuda"))]
+            unreachable!();
         } else {
+            info!("Computing FFTs on CPU");
             prepared
                 .into_par_iter()
                 .try_for_each(|mut prepared| -> Result<()> {
                     let name = &prepared.settings.extract.name;
                     let src = prepared.settings.file.source.as_str();
 
-                    info!("Computing FFT on CPU for '{src}':'{name}'");
+                    debug!("Computing FFT on CPU for '{src}':'{name}'");
                     fft::fft64_packed(&mut prepared.y)?;
                     let fft = fft::fft64_unpack(&prepared.y);
 
@@ -394,7 +411,7 @@ impl Settings {
         }
 
         // Extract the columns
-        info!("Extracting dataset '{name}' (x='{x}', y='{y}')");
+        debug!("Extracting dataset '{name}' (x='{x}', y='{y}')");
         let xy = data.clone_xy(x, y);
 
         // Check for NaN and infinities
@@ -431,8 +448,15 @@ impl<'a> Prepared<'a> {
 
         info!("Preprocessing file '{src}': dataset '{name}'");
 
+        let n_log2 = (xy.len() as f64).log2();
+        trace!("Dataset '{src}':'{name}' length: ~2^{n_log2:.2}");
+
+        // Monotonicity
+        trace!("Making '{src}':'{name}' monotonic");
+        let mut xy = xy.into_monotonic();
+
         // Output raw data
-        debug!("Storing raw data for '{src}':'{name}'");
+        trace!("Storing raw data for '{src}':'{name}'");
         save(
             project,
             name,
@@ -445,13 +469,6 @@ impl<'a> Prepared<'a> {
             xy.y(),
         )?;
 
-        let n_log2 = (xy.len() as f64).log2();
-        debug!("Dataset '{src}':'{name}' length: ~2^{n_log2:.2}");
-
-        // Monotonicity
-        debug!("Making '{src}':'{name}' monotonic");
-        let mut xy = xy.into_monotonic();
-
         // Impulse filtering
         // Do this before trimming, such that edge artifacts may be cut off afterwards
         if settings.preprocessing.impulse_filter > 0 {
@@ -463,7 +480,7 @@ impl<'a> Prepared<'a> {
                 "Impulse filter with negative tuning makes no sense"
             );
 
-            debug!(
+            trace!(
                 "Applying impulse filter of width {width} and tuning {tuning} to '{src}':'{name}'"
             );
             xy.impulse_filter(width as usize, tuning);
@@ -482,7 +499,7 @@ impl<'a> Prepared<'a> {
                 xy.right_x()
             );
 
-            debug!("Masking '{src}':'{name}' from {} to {}", left, right);
+            trace!("Masking '{src}':'{name}' from {} to {}", left, right);
             xy.mask(left, right);
         }
 
@@ -502,7 +519,7 @@ impl<'a> Prepared<'a> {
 
         // Automagically swap trim sign if needed to deal with negative x data
         if xy.right_x() <= 0.0 && trim_right >= 0.0 {
-            debug!("Flipping trim domain around zero for '{src}':'{name}'");
+            trace!("Flipping trim domain around zero for '{src}':'{name}'");
             std::mem::swap(&mut trim_left, &mut trim_right);
             trim_left *= -1.0;
             trim_right *= -1.0;
@@ -529,7 +546,7 @@ impl<'a> Prepared<'a> {
             "Right trim {trim_right} is outside domain {:?} for '{src}':'{name}'",
             xy.right_x()
         );
-        debug!("Data domain: [{trim_left},{trim_right}]");
+        trace!("Data domain: [{trim_left},{trim_right}]");
         xy.trim(trim_left, trim_right);
 
         // Premultiplication
@@ -537,16 +554,16 @@ impl<'a> Prepared<'a> {
         let mx = settings.preprocessing.prefactor_x;
         let my = settings.preprocessing.prefactor_y;
         if mx != 1.0 {
-            debug!("Multiplying '{src}':'{name}' x by {mx}");
+            trace!("Multiplying '{src}':'{name}' x by {mx}");
             xy.multiply_x(mx);
         }
         if my != 1.0 {
-            debug!("Multiplying '{src}':'{name}' y by {my}");
+            trace!("Multiplying '{src}':'{name}' y by {my}");
             xy.multiply_y(my);
         }
 
         // Output preprocessed data
-        debug!("Storing preprocessed data for '{src}':'{name}'");
+        trace!("Storing preprocessed data for '{src}':'{name}'");
         save(
             project,
             name,
@@ -561,11 +578,11 @@ impl<'a> Prepared<'a> {
 
         // 1/x
         if settings.preprocessing.invert_x {
-            debug!("Inverting '{src}':'{name}' x");
+            trace!("Inverting '{src}':'{name}' x");
             xy.invert_x();
 
             // Output inverted data
-            debug!("Storing inverted data for '{src}':'{name}'");
+            trace!("Storing inverted data for '{src}':'{name}'");
             save(
                 project,
                 name,
@@ -649,7 +666,7 @@ impl<'a> Preprocessed<'a> {
                     Derivative::Second => "2nd derivative",
                 };
 
-                info!("Interpolating '{src}':'{name}' using {deriv_str} at {n_interp} points using {algorithm} interpolation");
+                debug!("Interpolating '{src}':'{name}' using {deriv_str} at {n_interp} points using {algorithm} interpolation");
 
                 let dx = xy.domain_len() / n_interp as f64;
                 let x_eval = (0..n_interp)
@@ -659,7 +676,7 @@ impl<'a> Preprocessed<'a> {
                     interpolate_monotonic((*algorithm).into(), deriv, xy.x(), xy.y(), &x_eval)?;
 
                 // Output post interpolation data
-                debug!("Storing post-interpolation data for '{src}':'{name}'");
+                trace!("Storing post-interpolation data for '{src}':'{name}'");
                 save(
                     project,
                     name,
@@ -717,7 +734,7 @@ impl<'a> Processed<'a> {
 
         // Trim domain
         // The domain is calculated internally so we may assume its boundaries are correct
-        debug!("Trimming '{src}':'{name}' for FFT {window_label}");
+        trace!("Trimming '{src}':'{name}' for FFT {window_label}");
         xy.trim(domain_left, domain_right);
 
         let (x, mut y) = xy.take_xy();
@@ -745,13 +762,13 @@ impl<'a> Processed<'a> {
         if fft_settings.center {
             let mean = stats::mean(&y);
 
-            debug!("Removing mean value {mean} from '{src}':'{name}'");
+            trace!("Removing mean value {mean} from '{src}':'{name}'");
             y.iter_mut().for_each(|y| {
                 *y -= mean;
             });
         }
         if fft_settings.hann {
-            debug!("Applying Hann window to '{src}':'{name}'");
+            trace!("Applying Hann window to '{src}':'{name}'");
             y.iter_mut().enumerate().for_each(|(i, y)| {
                 *y *= (i as f64 * std::f64::consts::PI / (n_data - 1) as f64)
                     .sin()
@@ -764,7 +781,7 @@ impl<'a> Processed<'a> {
         }
 
         if n_pad > 0 {
-            debug!(
+            trace!(
                     "Zero padding '{src}':'{name}' by {n_pad} to reach 2^{desired_n_log2} points total length ({} MB)",
                     desired_n * std::mem::size_of::<f64>() / 1024usize.pow(2)
                 );
@@ -817,7 +834,7 @@ impl<'a> PreparedFft<'a> {
         let lower_cutoff = fft_settings.truncate_lower.unwrap_or(0.0);
         let upper_cutoff = fft_settings.truncate_upper.unwrap_or(f64::INFINITY);
         if lower_cutoff != 0.0 || upper_cutoff.is_finite() {
-            debug!("Truncating FFT to {lower_cutoff}..{upper_cutoff} 'Hz' for '{src}':'{name}'");
+            trace!("Truncating FFT to {lower_cutoff}..{upper_cutoff} 'Hz' for '{src}':'{name}'");
         }
 
         let n = n_data + n_pad;
@@ -835,7 +852,7 @@ impl<'a> PreparedFft<'a> {
 
         // Take absolute value and normalize
         // NB. Do this after truncation to save a huge amount of work
-        debug!("Normalizing FFT by 1/{n_data}");
+        trace!("Normalizing FFT by 1/{n_data}");
         let normalisation = 1.0 / *n_data as f64;
         let fft = fft[start_idx..end_idx]
             .iter()
@@ -843,7 +860,7 @@ impl<'a> PreparedFft<'a> {
             .collect::<Vec<_>>();
 
         // Output FFT
-        info!("Storing FFT for '{src}':'{name}'");
+        debug!("Storing FFT for '{src}':'{name}'");
         save(
             project,
             name,

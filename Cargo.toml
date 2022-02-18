@@ -3,12 +3,16 @@ authors = ["Pim van den Berg"]
 edition = "2021"
 license-file = "LICENSE"
 name = "hfml_data_preprocessor"
-version = "1.5.5"
+version = "1.5.9"
+
+[features]
+default = ["cuda"]
+cuda = ["cufft_rust"]
 
 [dependencies]
 anyhow = "1.0.52"
 clap = {version = "3.0", features = ["derive"]}
-cufft_rust = {version = "*", path = "../cufft_rust"}
+cufft_rust = {version = "*", path = "../cufft_rust", optional = true}
 fast-float = "0.2.0"
 float-ord = "0.3.2"
 gsl_rust = {version = "*", path = "../gsl_rust"}
