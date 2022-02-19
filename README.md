@@ -83,7 +83,8 @@ The tool generates nested output folders, separating the data generated at each 
         /post_interpolation
         /fft
         /fft_sweep_<upper,lower,window>_<n>
-        /metadata.json
+        
+    output/<project name>/metadata.json
     
     log/
         hfml_data_preprocessor_<unix time>.log
@@ -98,7 +99,7 @@ The data is processed as follows and in the following order:
 - `raw`: only sorted and deduplicated, such that the x data is monotonically increasing. This is often required for filtering algorithms. All steps after this will stay monotonic.
 - `preprocessed`: after masking, filtering, premultiplication. Essentially the full preprocessing machinery except x inversion, as this makes visual comparison with the raw data near impossible.
 - `inverted`: after x inversion.
-- `post_interpolation`: after interpolation and derivative. For performance and simplicity, these two steps are implemented as a single mathematical operation. Keep in mind that linear interpolation therefore defines the second derivative to be zero everywhere. No filtering is applied, so keep in mind high frequency noise will be amplified by taking the derivative.
+- `post_interpolation`: after interpolation and derivative. For performance and simplicity, these two steps are implemented as a single mathematical operation. Linear interpolation therefore defines the second derivative to be zero everywhere. No filtering is applied, so keep in mind high frequency noise will be amplified by taking the derivative.
 - `fft`: after the Fast Fourier Transform (full domain).
 - `fft_sweep_<upper,lower,window>_<n>`: after the `n`'th FTFT window. These windows are distributed uniformly over the given data domain, after x inversion.
 
