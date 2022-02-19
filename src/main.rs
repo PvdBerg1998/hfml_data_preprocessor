@@ -178,7 +178,8 @@ fn _main() -> Result<()> {
         fft,
         settings,
         files,
-        ..
+        extract,
+        rename: _,
     } = template;
 
     // Dumping area for all save records
@@ -439,6 +440,7 @@ fn _main() -> Result<()> {
             "max_per_variable": max_n_per_var,
             "max": max_n
         },
+        "variables": extract.into_iter().map(|extract| extract.name).collect::<Vec<_>>(),
         "output": save_records,
         "settings": settings,
         "processed_files": files.into_iter().map(|file| file.source).collect::<Vec<_>>(),

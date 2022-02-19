@@ -114,6 +114,38 @@ Information about the generated file structure is stored in `metadata.json` in h
 - FTFT subdomains
 - User defined tags
 
+An example usecase: imagine you want to plot the FFTs for each extracted variable measured at an angle of zero degrees. Simply load the `metadata.json` and filter it appropriately:
+
+```python
+from functional import seq
+
+sample = "MyMaterialStudy123"
+
+def load_msgpack(path):
+    with open(os.path.join(f"../{sample}/", path), "rb") as f:
+        xy = np.array(ormsgpack.unpackb(f.read()))
+        xy = np.transpose(xy)
+        df = pd.DataFrame(data=xy, columns=["x", "y"])
+        return df
+
+def metadata(project):
+    path = f"../{sample}/output/{project}/metadata.json"
+    with open(path, "rt") as f:
+        return json.loads(f.read())
+
+def output_seq(project):
+    return seq(metadata(project)["output"])
+
+data = output_seq("MyProject")\
+    .filter(lambda out: out["stage"] == "fft")\
+    .filter(lambda out: out["metadata"]["tags"]["angle"] == 0)\
+    .map(lambda out: (out["variable"], load_msgpack(out["path"])))\
+    .to_list()
+
+for variable, fft in data:
+    fft[fft.x.between(0, 1000)].plot(x="x", y="y", title=variable)
+```
+
 # Compiling
 The tool is written in Rust. A working Rust compiler is therefore required. The stable toolchain is sufficient. For installation, follow [these steps](https://www.rust-lang.org/tools/install). This may require you to install additional build tools, documented [here](https://rust-lang.github.io/rustup/installation/windows.html).
 

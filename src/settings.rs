@@ -250,6 +250,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
         project,
         rename,
         files,
+        extract,
         settings,
         fft,
     })
@@ -326,6 +327,7 @@ pub struct Template {
     pub project: Project,
     pub rename: Vec<Rename>,
     pub files: Vec<File>,
+    pub extract: Vec<Extract>,
     pub settings: Vec<Settings>,
     pub fft: Option<Fft>,
 }
