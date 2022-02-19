@@ -22,20 +22,10 @@ This tool is meant to quickly extract, inspect, preprocess and Fourier transform
 
 ### Output
 - Data output at each intermediate step in either CSV or [MessagePack](https://msgpack.org/index.html) binary format
-- Quick 'n dirty plotting for manual inspection
+- Quick 'n dirty plotting for manual inspection without external tools
+- Detailed metadata stored as JSON for easy scripted postprocessing
 
-MessagePack is recommended because it skips converting the binary floating point data to a base 10 representation and later back again. For usage in Python, I recommend [ormsgpack](https://pypi.org/project/ormsgpack/) to decode the data. It can then be loaded into either NumPy or Pandas in the following way:
-
-```python
-import ormsgpack
-import pandas as pd
-import numpy as np
-
-with open("file.msg", "rb") as f:
-    xy = np.array(ormsgpack.unpackb(f.read()))
-    xy = np.transpose(xy)
-    df = pd.DataFrame(data=xy, columns=["x", "y"])
-```
+MessagePack is recommended because it skips converting the floating point data back and forth to a base 10 representation. This saves processing power as well as potential accuracy loss. For usage in Python, I recommend [ormsgpack](https://pypi.org/project/ormsgpack/) to decode the data. An example is detailed further down.
 
 ### FFT
 - DC component removal
@@ -121,28 +111,43 @@ from functional import seq
 
 sample = "MyMaterialStudy123"
 
+# Loads a messagepack encoded output file
 def load_msgpack(path):
+    # Be sure to read the file as binary
     with open(os.path.join(f"../{sample}/", path), "rb") as f:
         xy = np.array(ormsgpack.unpackb(f.read()))
         xy = np.transpose(xy)
+        # These column names are arbitrary,
+        # but its useful to be consistent
         df = pd.DataFrame(data=xy, columns=["x", "y"])
         return df
 
+# Loads the JSON metadata
 def metadata(project):
     path = f"../{sample}/output/{project}/metadata.json"
     with open(path, "rt") as f:
         return json.loads(f.read())
 
+#
+# This was all you really need!
+# The following code is just an example of metadata filtering.
+#
+
+# Extracts the output section from the metadata
 def output_seq(project):
     return seq(metadata(project)["output"])
 
+# Select only the FFTs with tag angle=0,
+# then load the data bundled with the variable name.
 data = output_seq("MyProject")\
     .filter(lambda out: out["stage"] == "fft")\
     .filter(lambda out: out["metadata"]["tags"]["angle"] == 0)\
     .map(lambda out: (out["variable"], load_msgpack(out["path"])))\
     .to_list()
 
+# Generate plots through matplotlib
 for variable, fft in data:
+    # Limiting the frequencies to [0,1000]
     fft[fft.x.between(0, 1000)].plot(x="x", y="y", title=variable)
 ```
 
