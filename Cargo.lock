@@ -558,7 +558,7 @@ dependencies = [
 
 [[package]]
 name = "hfml_data_preprocessor"
-version = "1.5.10"
+version = "1.7.0"
 dependencies = [
  "anyhow",
  "built",
@@ -575,6 +575,7 @@ dependencies = [
  "rmp",
  "ryu",
  "serde",
+ "serde_json",
  "simplelog",
  "smallvec",
  "toml",
@@ -631,6 +632,12 @@ checksum = "a9a9d19fa1e79b6215ff29b9d6880b706147f16e9b1dbb1e4e5947b5b02bc5e3"
 dependencies = [
  "either",
 ]
+
+[[package]]
+name = "itoa"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1aab8fc367588b89dcee83ab0fd66b72b50b72fa1904d7095045ace2b0c81c35"
 
 [[package]]
 name = "jpeg-decoder"
@@ -1085,6 +1092,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "serde_json"
+version = "1.0.79"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e8d9fa5c3b304765ce1fd9c4c8a3de2c8db365a5b91be52f186efc675681d95"
+dependencies = [
+ "itoa",
+ "ryu",
+ "serde",
 ]
 
 [[package]]

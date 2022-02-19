@@ -45,6 +45,8 @@ use itertools::Itertools;
 use log::*;
 use num_complex::Complex64;
 use rayon::prelude::*;
+use serde::Serialize;
+use serde_json as json;
 use settings::{Settings, Template};
 use simplelog::*;
 use std::collections::HashMap;
@@ -86,6 +88,7 @@ fn _main() -> Result<()> {
         1 => LevelFilter::Debug,
         _ => LevelFilter::Trace,
     };
+    let log_path = format!("log/hfml_data_preprocessor_{unix}.log");
     CombinedLogger::init(vec![
         TermLogger::new(
             log_level,
@@ -106,17 +109,23 @@ fn _main() -> Result<()> {
                 .set_thread_level(LevelFilter::Error)
                 .set_location_level(LevelFilter::Off)
                 .build(),
-            File::create(format!("log/hfml_data_preprocessor_{unix}.log"))?,
+            File::create(&log_path)?,
         ),
     ])?;
 
-    info!(
-        "Running hfml_data_preprocessor version {}, built at {} for {} by {}.",
+    let version = format!(
+        "{} {}, built at {} for {} by {}",
         built_info::PKG_VERSION,
+        if cfg!(feature = "cuda") {
+            "with CUDA support"
+        } else {
+            "without CUDA support"
+        },
         built_info::BUILT_TIME_UTC,
         built_info::TARGET,
         built_info::RUSTC_VERSION
     );
+    info!("Running hfml_data_preprocessor version {version}");
 
     // Parse template
     let template = Template::load(
@@ -137,7 +146,8 @@ fn _main() -> Result<()> {
     // Load files
     let data = template
         .files
-        .par_iter()
+        .clone()
+        .into_par_iter()
         .map(|file| {
             debug!("Loading file {}", file.source);
             let s = std::fs::read_to_string(&file.source)?;
@@ -159,7 +169,7 @@ fn _main() -> Result<()> {
             }
             trace!("Columns (after replacing): {:#?}", data.columns());
 
-            Ok((file.source.as_str(), data))
+            Ok((file.source, data))
         })
         .collect::<Result<HashMap<_, _>>>()?;
 
@@ -167,8 +177,13 @@ fn _main() -> Result<()> {
         project,
         fft,
         settings,
+        files,
         ..
     } = template;
+
+    // Dumping area for all save records
+    // We just guesstimate the storage required: 5 types of output for a normal FFT
+    let mut save_records = Vec::with_capacity(settings.len() * 5);
 
     // Prepare and preprocess data in parallel
     let preprocessed = settings
@@ -179,7 +194,13 @@ fn _main() -> Result<()> {
             settings.prepare(data, &project).transpose()
         })
         .map(|prepared| prepared.and_then(|prepared| prepared.preprocess()))
-        .collect::<Result<Vec<_>>>()?;
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .map(|(preprocessed, saves)| {
+            save_records.extend(saves);
+            preprocessed
+        })
+        .collect::<Vec<_>>();
 
     debug!("Calculating automatic interpolation statistics");
 
@@ -251,7 +272,13 @@ fn _main() -> Result<()> {
                 .copied();
             preprocessed.process(n_interp_global, n_interp_var)
         })
-        .collect::<Result<Vec<_>>>()?;
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .map(|(processed, saves)| {
+            save_records.extend(saves);
+            processed
+        })
+        .collect::<Vec<_>>();
 
     // FFT
     if let Some(fft) = fft {
@@ -275,10 +302,12 @@ fn _main() -> Result<()> {
 
                         // Iterate left boundary down, starting 1 tick left from the right side
                         (0..steps)
-                            //.into_par_iter()
                             .rev()
                             .map(|i| {
                                 let left = left + i as f64 * dx;
+                                (i, left, right)
+                            })
+                            .map(|(i, left, right)| {
                                 processed.clone().prepare_fft(&fft, left, right, Some(i))
                             })
                             .collect::<Result<Vec<_>>>()
@@ -295,9 +324,11 @@ fn _main() -> Result<()> {
 
                         // Iterate right boundary up, starting 1 tick right from the left side
                         (1..=steps)
-                            //.into_par_iter()
                             .map(|i| {
                                 let right = left + i as f64 * dx;
+                                (i, left, right)
+                            })
+                            .map(|(i, left, right)| {
                                 processed.clone().prepare_fft(&fft, left, right, Some(i))
                             })
                             .collect::<Result<Vec<_>>>()
@@ -342,17 +373,23 @@ fn _main() -> Result<()> {
                     .map(|prepared| prepared.y.as_slice())
                     .collect::<Vec<_>>();
                 let fft = cufft::fft64_batch(&batch)?;
-                prepared.into_par_iter().zip(fft).try_for_each(
-                    |(prepared, fft)| -> Result<()> {
-                        prepared.finish(&fft)?;
+                prepared
+                    .into_par_iter()
+                    .zip(fft)
+                    .map(|(prepared, fft)| {
+                        let saves = prepared.finish(&fft)?;
 
                         // // Performance hack: intentionally leak memory to avoid drop
                         // std::mem::forget(fft);
                         // std::mem::forget(prepared);
 
-                        Ok(())
-                    },
-                )?;
+                        Ok(saves)
+                    })
+                    .collect::<Result<Vec<_>>>()?
+                    .into_iter()
+                    .for_each(|saves| {
+                        save_records.extend(saves);
+                    });
             }
             #[cfg(not(feature = "cuda"))]
             unreachable!();
@@ -360,7 +397,7 @@ fn _main() -> Result<()> {
             info!("Computing FFTs on CPU");
             prepared
                 .into_par_iter()
-                .try_for_each(|mut prepared| -> Result<()> {
+                .map(|mut prepared| {
                     let name = &prepared.settings.extract.name;
                     let src = prepared.settings.file.source.as_str();
 
@@ -368,14 +405,19 @@ fn _main() -> Result<()> {
                     fft::fft64_packed(&mut prepared.y)?;
                     let fft = fft::fft64_unpack(&prepared.y);
 
-                    prepared.finish(&fft)?;
+                    let saves = prepared.finish(&fft)?;
 
                     // // Performance hack: intentionally leak memory to avoid drop
                     // std::mem::forget(fft);
                     // std::mem::forget(prepared);
 
-                    Ok(())
-                })?;
+                    Ok(saves)
+                })
+                .collect::<Result<Vec<_>>>()?
+                .into_iter()
+                .for_each(|saves| {
+                    save_records.extend(saves);
+                });
         };
     }
 
@@ -383,7 +425,29 @@ fn _main() -> Result<()> {
     // std::mem::forget(data);
 
     let end = Instant::now();
-    info!("Finished in {} ms", (end - start).as_millis());
+    let runtime_ms = (end - start).as_millis();
+    let runtime_sec = (end - start).as_secs_f64();
+    info!("Finished in {runtime_ms} ms");
+
+    // Store metadata json for postprocessing convenience
+    info!("Storing metadata json");
+    let metadata = json::json!({
+        "version": version,
+        "log": log_path,
+        "runtime_sec": runtime_sec,
+        "interpolation_stats": {
+            "max_per_variable": max_n_per_var,
+            "max": max_n
+        },
+        "output": save_records,
+        "settings": settings,
+        "processed_files": files.into_iter().map(|file| file.source).collect::<Vec<_>>(),
+    });
+    let sanitized_title = project.title.replace(' ', "_");
+    std::fs::write(
+        format!("output/{}/metadata.json", sanitized_title),
+        &json::to_string_pretty(&metadata).expect("failed to generate metadata json"),
+    )?;
 
     Ok(())
 }
@@ -434,7 +498,7 @@ impl Settings {
 }
 
 impl<'a> Prepared<'a> {
-    fn preprocess(self) -> Result<Preprocessed<'a>> {
+    fn preprocess(self) -> Result<(Preprocessed<'a>, Vec<SaveRecord>)> {
         let Self {
             project,
             settings,
@@ -447,6 +511,7 @@ impl<'a> Prepared<'a> {
         let src = settings.file.source.as_str();
 
         info!("Preprocessing file '{src}': dataset '{name}'");
+        let mut saves = vec![];
 
         let n_log2 = (xy.len() as f64).log2();
         trace!("Dataset '{src}':'{name}' length: ~2^{n_log2:.2}");
@@ -457,7 +522,7 @@ impl<'a> Prepared<'a> {
 
         // Output raw data
         trace!("Storing raw data for '{src}':'{name}'");
-        save(
+        saves.push(save(
             project,
             name,
             "raw",
@@ -467,7 +532,10 @@ impl<'a> Prepared<'a> {
             project.plot,
             xy.x(),
             xy.y(),
-        )?;
+            json::json!({
+                "tags": settings.file.metadata,
+            }),
+        )?);
 
         // Impulse filtering
         // Do this before trimming, such that edge artifacts may be cut off afterwards
@@ -564,7 +632,7 @@ impl<'a> Prepared<'a> {
 
         // Output preprocessed data
         trace!("Storing preprocessed data for '{src}':'{name}'");
-        save(
+        saves.push(save(
             project,
             name,
             "preprocessed",
@@ -574,7 +642,11 @@ impl<'a> Prepared<'a> {
             project.plot,
             xy.x(),
             xy.y(),
-        )?;
+            json::json!({
+                "tags": settings.file.metadata,
+                "settings": settings.preprocessing,
+            }),
+        )?);
 
         // 1/x
         if settings.preprocessing.invert_x {
@@ -583,7 +655,7 @@ impl<'a> Prepared<'a> {
 
             // Output inverted data
             trace!("Storing inverted data for '{src}':'{name}'");
-            save(
+            saves.push(save(
                 project,
                 name,
                 "inverted",
@@ -593,7 +665,10 @@ impl<'a> Prepared<'a> {
                 false,
                 xy.x(),
                 xy.y(),
-            )?;
+                json::json!({
+                    "tags": settings.file.metadata,
+                }),
+            )?);
         }
 
         let x_label = if settings.preprocessing.invert_x {
@@ -602,13 +677,16 @@ impl<'a> Prepared<'a> {
             x_label
         };
 
-        Ok(Preprocessed {
-            project,
-            settings,
-            x_label,
-            y_label,
-            xy,
-        })
+        Ok((
+            Preprocessed {
+                project,
+                settings,
+                x_label,
+                y_label,
+                xy,
+            },
+            saves,
+        ))
     }
 }
 
@@ -617,7 +695,7 @@ impl<'a> Preprocessed<'a> {
         self,
         n_interp_global: Option<u64>,
         n_interp_var: Option<u64>,
-    ) -> Result<Processed<'a>> {
+    ) -> Result<(Processed<'a>, Vec<SaveRecord>)> {
         let Self {
             project,
             settings,
@@ -629,6 +707,7 @@ impl<'a> Preprocessed<'a> {
         let src = settings.file.source.as_str();
 
         info!("Processing file '{src}': dataset '{name}'");
+        let mut saves = vec![];
 
         // Interpolation
         let (x, y) = match (
@@ -677,7 +756,7 @@ impl<'a> Preprocessed<'a> {
 
                 // Output post interpolation data
                 trace!("Storing post-interpolation data for '{src}':'{name}'");
-                save(
+                saves.push(save(
                     project,
                     name,
                     "post interpolation",
@@ -687,7 +766,12 @@ impl<'a> Preprocessed<'a> {
                     false,
                     &x_eval,
                     &y_eval,
-                )?;
+                    json::json!({
+                        "tags": settings.file.metadata,
+                        "settings": settings.processing,
+                        "interpolation_n": n_interp
+                    }),
+                )?);
 
                 (x_eval, y_eval)
             }
@@ -699,13 +783,16 @@ impl<'a> Preprocessed<'a> {
 
         let xy = MonotonicXY::new_unchecked(x, y);
 
-        Ok(Processed {
-            project,
-            settings,
-            x_label,
-            y_label,
-            xy,
-        })
+        Ok((
+            Processed {
+                project,
+                settings,
+                x_label,
+                y_label,
+                xy,
+            },
+            saves,
+        ))
     }
 }
 
@@ -807,6 +894,8 @@ impl<'a> Processed<'a> {
             y_label,
             n_data,
             n_pad,
+            domain_left,
+            domain_right,
             x,
             y,
         })
@@ -814,7 +903,7 @@ impl<'a> Processed<'a> {
 }
 
 impl<'a> PreparedFft<'a> {
-    fn finish(&self, fft: &[Complex64]) -> Result<()> {
+    fn finish(&self, fft: &[Complex64]) -> Result<Vec<SaveRecord>> {
         let Self {
             project,
             settings,
@@ -824,6 +913,8 @@ impl<'a> PreparedFft<'a> {
             y_label: _,
             n_data,
             n_pad,
+            domain_left,
+            domain_right,
             x,
             y: _,
         } = self;
@@ -831,6 +922,7 @@ impl<'a> PreparedFft<'a> {
         let src = settings.file.source.as_str();
 
         info!("FFT postprocessing file '{src}': dataset '{name}'");
+        let mut saves = vec![];
 
         // Prepare frequency space cutoffs
         let lower_cutoff = fft_settings.truncate_lower.unwrap_or(0.0);
@@ -863,7 +955,7 @@ impl<'a> PreparedFft<'a> {
 
         // Output FFT
         debug!("Storing FFT for '{src}':'{name}'");
-        save(
+        saves.push(save(
             project,
             name,
             &match fft_settings.sweep {
@@ -878,9 +970,14 @@ impl<'a> PreparedFft<'a> {
             false,
             &x,
             &fft,
-        )?;
+            json::json!({
+                "tags": settings.file.metadata,
+                "fft_domain": (domain_left, domain_right),
+                "settings": fft_settings,
+            }),
+        )?);
 
-        Ok(())
+        Ok(saves)
     }
 }
 
@@ -921,8 +1018,20 @@ struct PreparedFft<'a> {
     y_label: String,
     n_data: usize,
     n_pad: usize,
+    domain_left: f64,
+    domain_right: f64,
     x: Vec<f64>,
     y: Vec<f64>,
+}
+
+#[must_use]
+#[derive(Clone, Debug, PartialEq, Serialize)]
+struct SaveRecord {
+    format: Format,
+    stage: String,
+    variable: String,
+    path: String,
+    metadata: json::Value,
 }
 
 fn save(
@@ -935,7 +1044,9 @@ fn save(
     plot: bool,
     x: &[f64],
     y: &[f64],
-) -> Result<()> {
+    metadata: json::Value,
+) -> Result<SaveRecord> {
+    // todo: move this to settings parser and do it once
     let sanitized_project = project.title.replace(' ', "_");
     let sanitized_name = name.replace(' ', "_");
     let sanitized_title = title.replace(' ', "_");
@@ -951,23 +1062,6 @@ fn save(
         extra_dirs,
     ));
 
-    match project.format {
-        Format::Csv => output::store_csv(
-            x,
-            y,
-            format!(
-                "output/{sanitized_project}/{sanitized_name}/{sanitized_title}/{sanitized_dst}.csv"
-            ),
-        )?,
-        Format::MessagePack => output::store_messagepack(
-            x,
-            y,
-            format!(
-                "output/{sanitized_project}/{sanitized_name}/{sanitized_title}/{sanitized_dst}.msg"
-            ),
-        )?,
-    }
-
     if plot {
         output::plot(
             x,
@@ -980,7 +1074,35 @@ fn save(
             ),
         )?;
     }
-    Ok(())
+
+    match project.format {
+        Format::Csv => {
+            let csv_path = format!(
+                "output/{sanitized_project}/{sanitized_name}/{sanitized_title}/{sanitized_dst}.csv"
+            );
+            output::store_csv(x, y, &csv_path)?;
+            Ok(SaveRecord {
+                format: project.format,
+                stage: title.to_owned(),
+                variable: name.to_owned(),
+                path: csv_path,
+                metadata,
+            })
+        }
+        Format::MessagePack => {
+            let msgpack_path = format!(
+                "output/{sanitized_project}/{sanitized_name}/{sanitized_title}/{sanitized_dst}.msg"
+            );
+            output::store_messagepack(x, y, &msgpack_path)?;
+            Ok(SaveRecord {
+                format: project.format,
+                stage: title.to_owned(),
+                variable: name.to_owned(),
+                path: msgpack_path,
+                metadata,
+            })
+        }
+    }
 }
 
 /// Parses `log2("2^n")`.

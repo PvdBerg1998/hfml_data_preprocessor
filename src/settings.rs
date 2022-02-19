@@ -23,6 +23,8 @@ use anyhow::Result;
 use itertools::Itertools;
 use serde::de::IntoDeserializer;
 use serde::Deserialize;
+use serde::Serialize;
+use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 use toml::Value;
@@ -334,7 +336,7 @@ impl Template {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Project {
     pub title: String,
     #[serde(default = "_true")]
@@ -345,7 +347,7 @@ pub struct Project {
     pub threading: bool,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Format {
     Csv,
@@ -358,7 +360,7 @@ impl Default for Format {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Settings {
     pub file: File,
     pub extract: Extract,
@@ -366,32 +368,34 @@ pub struct Settings {
     pub processing: Processing,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct File {
     pub source: String,
     pub dest: String,
+    #[serde(flatten)]
+    pub metadata: HashMap<String, Value>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Mask {
     pub left: f64,
     pub right: f64,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rename {
     pub from: String,
     pub to: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Extract {
     pub name: String,
     pub x: String,
     pub y: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Preprocessing {
     #[serde(default)]
     pub impulse_filter: u32,
@@ -409,7 +413,7 @@ pub struct Preprocessing {
     pub invert_x: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Processing {
     pub interpolation: Option<InterpolationAlgorithm>,
     pub interpolation_n: Option<String>,
@@ -417,7 +421,7 @@ pub struct Processing {
     pub derivative: u32,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum InterpolationAlgorithm {
     Linear,
@@ -443,7 +447,7 @@ impl Into<gsl_rust::interpolation::Algorithm> for InterpolationAlgorithm {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Fft {
     pub zero_pad: String,
     #[serde(default = "_true")]
@@ -459,7 +463,7 @@ pub struct Fft {
     pub sweep_steps: Option<usize>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FftSweep {
     Full,

@@ -3,7 +3,7 @@ authors = ["Pim van den Berg"]
 edition = "2021"
 license-file = "LICENSE"
 name = "hfml_data_preprocessor"
-version = "1.5.10"
+version = "1.7.0"
 
 [features]
 default = ["cuda"]
@@ -17,6 +17,7 @@ fast-float = "0.2.0"
 float-ord = "0.3.2"
 gsl_rust = {version = "*", path = "../gsl_rust"}
 itertools = "0.10.3"
+serde_json = "1.0"
 log = "0.4.14"
 num-complex = "0.4"
 plotters = {version = "0.3.1", default-features = false, features = ["line_series", "bitmap_backend", "bitmap_encoder", "ttf"]}

@@ -18,6 +18,8 @@
 [project]
 # Project title
 # All output data is stored in a folder with this name.
+# This name should be unique for all of your settings files,
+# otherwise you may end up overwriting files.
 title = "Test"
 
 # Output preliminary plots for visual inspection.
@@ -261,6 +263,11 @@ source = "file.014.dat"
 # Output name. Choose something descriptive (sample, temperature, etc.)
 # This may contain sub directories
 dest = "dir1/measurement_014"
+# Other tags will be considered as metadata and stored in the file metadata database
+# This may help to index your generated files for postprocessing.
+# You may add an arbitrary amount to each file
+temperature = "4.2K"
+index = 14
 
 #
 # RENAMING

@@ -83,6 +83,7 @@ The tool generates nested output folders, separating the data generated at each 
         /post_interpolation
         /fft
         /fft_sweep_<upper,lower,window>_<n>
+        /metadata.json
     
     log/
         hfml_data_preprocessor_<unix time>.log
@@ -104,6 +105,13 @@ The data is processed as follows and in the following order:
 The raw and preprocessed data may include preliminary plot generation. This facilitates the quick iteration process of changing settings, rerunning and inspecting the result.
 
 Files inside the output folders are named as you defined inside the settings. This may include subfolders.
+
+Information about the generated file structure is stored in `metadata.json` in human readable `json`. This is meant to simplify further postprocessing by providing information about every generated file. Additional measurement metadata can be defined in `Settings.toml` per file. A rich amount of information is provided. For reasons of brevity the structure is undocumented, but should be straightforward. This may include:
+- Dynamic interpolation length statistics
+- Settings for each processing step
+- Full output file paths
+- FTFT subdomains
+- User defined tags
 
 # Compiling
 The tool is written in Rust. A working Rust compiler is therefore required. The stable toolchain is sufficient. For installation, follow [these steps](https://www.rust-lang.org/tools/install). This may require you to install additional build tools, documented [here](https://rust-lang.github.io/rustup/installation/windows.html).
