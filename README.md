@@ -107,6 +107,11 @@ Information about the generated file structure is stored in `metadata.json` in h
 An example usecase: imagine you want to plot the FFTs for each extracted variable measured at an angle of zero degrees. Simply load the `metadata.json` and filter it appropriately:
 
 ```python
+import os
+import json
+import ormsgpack
+import numpy as np
+import pandas as pd
 from functional import seq
 
 sample = "MyMaterialStudy123"
