@@ -428,7 +428,13 @@ fn _main() -> Result<()> {
 
                 // Now we only generate the required amount of FFTs,
                 // minimizing memory load.
-                for prepared in &prepared_generator.chunks(ffts_per_batch) {
+                for (i, prepared) in prepared_generator
+                    .chunks(ffts_per_batch)
+                    .into_iter()
+                    .enumerate()
+                {
+                    info!("Running GPU FFT batch #{i}");
+
                     // "Bubble up" the errors
                     let prepared = prepared.collect::<Result<Vec<_>>>()?;
 
