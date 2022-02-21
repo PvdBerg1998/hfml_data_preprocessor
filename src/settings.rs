@@ -29,6 +29,8 @@ use std::fmt;
 use std::path::Path;
 use toml::Value;
 
+// todo : parse string values to enums using serde instead of during main execution
+
 pub const INTERP_OPTION_MIN_VAR: &str = "minvar";
 pub const INTERP_OPTION_MIN: &str = "min";
 

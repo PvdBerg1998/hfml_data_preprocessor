@@ -288,27 +288,33 @@ fn _main() -> Result<()> {
     if let Some(fft) = fft {
         // We go through all this trouble of creating a "generator" to reduce memory load
         // Multiple files with relatively large sweep lengths can quickly fill your RAM
+        // NB. The intermediate generators must also be lazy so we use dynamically dispatched iterators
         let fft_amount = processed.len() * fft.sweep_steps.unwrap_or(1);
         let mut prepared_generator = {
             let fft = fft.clone();
             processed
                 .into_iter()
-                .map(move |processed| -> Vec<Result<_>> {
+                .flat_map(move |processed| {
                     let left = processed.xy.left_x();
                     let right = processed.xy.right_x();
 
-                    // Because we return Vec<Result>'s, an early failure is slightly scuffed
-                    // Other solutions would be to dynamically dispatch an iterator,
-                    // but that's probably not worth it
+                    type Iter = Box<dyn Iterator<Item = Result<PreparedFft>> + Send>;
+
                     macro_rules! err {
                         ($t:tt) => {
-                            vec![Err(anyhow!($t))]
+                            Box::new(std::iter::once(Err(anyhow!($t)))) as Iter
                         };
                     }
 
                     match fft.sweep {
                         FftSweep::Full => {
-                            vec![processed.prepare_fft(fft.clone(), left, right, None)]
+                            let iter = std::iter::once(processed.prepare_fft(
+                                fft.clone(),
+                                left,
+                                right,
+                                None,
+                            ));
+                            Box::new(iter) as Iter
                         }
                         FftSweep::Lower => {
                             let steps = match fft.sweep_steps {
@@ -323,18 +329,19 @@ fn _main() -> Result<()> {
                             let dx = (right - left) / steps as f64;
 
                             // Iterate left boundary down, starting 1 tick left from the right side
-                            (0..steps)
+                            let fft = fft.clone();
+                            let iter = (0..steps)
                                 .rev()
-                                .map(|i| {
+                                .map(move |i| {
                                     let left = left + i as f64 * dx;
                                     (i, left, right)
                                 })
-                                .map(|(i, left, right)| {
+                                .map(move |(i, left, right)| {
                                     processed
                                         .clone()
                                         .prepare_fft(fft.clone(), left, right, Some(i))
-                                })
-                                .collect::<Vec<_>>()
+                                });
+                            Box::new(iter) as Iter
                         }
                         FftSweep::Upper => {
                             let steps = match fft.sweep_steps {
@@ -349,22 +356,22 @@ fn _main() -> Result<()> {
                             let dx = (right - left) / steps as f64;
 
                             // Iterate right boundary up, starting 1 tick right from the left side
-                            (1..=steps)
-                                .map(|i| {
+                            let fft = fft.clone();
+                            let iter = (1..=steps)
+                                .map(move |i| {
                                     let right = left + i as f64 * dx;
                                     (i, left, right)
                                 })
-                                .map(|(i, left, right)| {
+                                .map(move |(i, left, right)| {
                                     processed
                                         .clone()
                                         .prepare_fft(fft.clone(), left, right, Some(i))
-                                })
-                                .collect::<Vec<_>>()
+                                });
+                            Box::new(iter) as Iter
                         }
                         FftSweep::Windows => todo!(),
                     }
                 })
-                .flatten()
                 .peekable()
         };
 
@@ -1103,6 +1110,7 @@ fn save(
     metadata: json::Value,
 ) -> Result<SaveRecord> {
     // todo: move this to settings parser and do it once
+
     let sanitized_project = project.title.replace(' ', "_");
     let sanitized_name = name.replace(' ', "_");
     let sanitized_title = title.replace(' ', "_");
