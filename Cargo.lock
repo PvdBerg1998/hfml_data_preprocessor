@@ -331,7 +331,7 @@ dependencies = [
 
 [[package]]
 name = "cufft_rust"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bindgen",
  "drop_guard",
@@ -526,7 +526,7 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "gsl_rust"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "bindgen",
  "cmake",
@@ -558,7 +558,7 @@ dependencies = [
 
 [[package]]
 name = "hfml_data_preprocessor"
-version = "1.7.1"
+version = "1.8.0"
 dependencies = [
  "anyhow",
  "built",

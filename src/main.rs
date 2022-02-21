@@ -51,6 +51,7 @@ use settings::{Settings, Template};
 use simplelog::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
 use std::{
     fs::File,
@@ -188,11 +189,13 @@ fn _main() -> Result<()> {
 
     // Prepare and preprocess data in parallel
     let preprocessed = settings
-        .par_iter()
+        .clone()
+        .into_par_iter()
+        .map(Arc::new)
         .filter_map(|settings| {
             let data = &data[settings.file.source.as_str()];
             // None's are ignored: they correspond to missing columns which is treated as a soft error
-            settings.prepare(data, &project).transpose()
+            settings.prepare(data, project.clone()).transpose()
         })
         .map(|prepared| prepared.and_then(|prepared| prepared.preprocess()))
         .collect::<Result<Vec<_>>>()?
@@ -243,7 +246,7 @@ fn _main() -> Result<()> {
                 }
                 None => bail!("Unable to determine minimum delta x for '{src}':'{name}'"),
             };
-            Ok((name.as_str(), n))
+            Ok((name.to_owned(), n))
         })
         .collect::<Result<Vec<_>>>()?
         .into_iter()
@@ -283,64 +286,87 @@ fn _main() -> Result<()> {
 
     // FFT
     if let Some(fft) = fft {
-        let prepared = processed
-            .into_par_iter()
-            .map(|processed| {
-                let left = processed.xy.left_x();
-                let right = processed.xy.right_x();
+        // We go through all this trouble of creating a "generator" to reduce memory load
+        // Multiple files with relatively large sweep lengths can quickly fill your RAM
+        let fft_amount = processed.len() * fft.sweep_steps.unwrap_or(1);
+        let mut prepared_generator = {
+            let fft = fft.clone();
+            processed
+                .into_iter()
+                .map(move |processed| -> Vec<Result<_>> {
+                    let left = processed.xy.left_x();
+                    let right = processed.xy.right_x();
 
-                match fft.sweep {
-                    FftSweep::Full => Ok(vec![processed.prepare_fft(&fft, left, right, None)?]),
-                    FftSweep::Lower => {
-                        let steps = match fft.sweep_steps {
-                            Some(steps) => steps,
-                            None => bail!("FFT sweep steps not defined"),
+                    // Because we return Vec<Result>'s, an early failure is slightly scuffed
+                    // Other solutions would be to dynamically dispatch an iterator,
+                    // but that's probably not worth it
+                    macro_rules! err {
+                        ($t:tt) => {
+                            vec![Err(anyhow!($t))]
                         };
-                        ensure!(steps > 1, "FFT sweep steps must be larger than 1");
-
-                        // Sweep lower boundary while the upper boundary stays fixed
-                        let dx = (right - left) / steps as f64;
-
-                        // Iterate left boundary down, starting 1 tick left from the right side
-                        (0..steps)
-                            .rev()
-                            .map(|i| {
-                                let left = left + i as f64 * dx;
-                                (i, left, right)
-                            })
-                            .map(|(i, left, right)| {
-                                processed.clone().prepare_fft(&fft, left, right, Some(i))
-                            })
-                            .collect::<Result<Vec<_>>>()
                     }
-                    FftSweep::Upper => {
-                        let steps = match fft.sweep_steps {
-                            Some(steps) => steps,
-                            None => bail!("FFT sweep steps not defined"),
-                        };
-                        ensure!(steps > 1, "FFT sweep steps must be larger than 1");
 
-                        // Sweep upper boundary while the lower boundary stays fixed
-                        let dx = (right - left) / steps as f64;
+                    match fft.sweep {
+                        FftSweep::Full => {
+                            vec![processed.prepare_fft(fft.clone(), left, right, None)]
+                        }
+                        FftSweep::Lower => {
+                            let steps = match fft.sweep_steps {
+                                Some(steps) => steps,
+                                None => return err!("FFT sweep steps not defined"),
+                            };
+                            if steps <= 1 {
+                                return err!("FFT sweep steps must be larger than 1");
+                            }
 
-                        // Iterate right boundary up, starting 1 tick right from the left side
-                        (1..=steps)
-                            .map(|i| {
-                                let right = left + i as f64 * dx;
-                                (i, left, right)
-                            })
-                            .map(|(i, left, right)| {
-                                processed.clone().prepare_fft(&fft, left, right, Some(i))
-                            })
-                            .collect::<Result<Vec<_>>>()
+                            // Sweep lower boundary while the upper boundary stays fixed
+                            let dx = (right - left) / steps as f64;
+
+                            // Iterate left boundary down, starting 1 tick left from the right side
+                            (0..steps)
+                                .rev()
+                                .map(|i| {
+                                    let left = left + i as f64 * dx;
+                                    (i, left, right)
+                                })
+                                .map(|(i, left, right)| {
+                                    processed
+                                        .clone()
+                                        .prepare_fft(fft.clone(), left, right, Some(i))
+                                })
+                                .collect::<Vec<_>>()
+                        }
+                        FftSweep::Upper => {
+                            let steps = match fft.sweep_steps {
+                                Some(steps) => steps,
+                                None => return err!("FFT sweep steps not defined"),
+                            };
+                            if steps <= 1 {
+                                return err!("FFT sweep steps must be larger than 1");
+                            }
+
+                            // Sweep upper boundary while the lower boundary stays fixed
+                            let dx = (right - left) / steps as f64;
+
+                            // Iterate right boundary up, starting 1 tick right from the left side
+                            (1..=steps)
+                                .map(|i| {
+                                    let right = left + i as f64 * dx;
+                                    (i, left, right)
+                                })
+                                .map(|(i, left, right)| {
+                                    processed
+                                        .clone()
+                                        .prepare_fft(fft.clone(), left, right, Some(i))
+                                })
+                                .collect::<Vec<_>>()
+                        }
+                        FftSweep::Windows => todo!(),
                     }
-                    FftSweep::Windows => todo!(),
-                }
-            })
-            .collect::<Result<Vec<_>>>()?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+                })
+                .flatten()
+                .peekable()
+        };
 
         let use_cuda = if fft.cuda {
             #[cfg(feature = "cuda")]
@@ -369,48 +395,78 @@ fn _main() -> Result<()> {
                     cufft::first_gpu_name()?
                 );
 
-                let batch = prepared
-                    .iter()
-                    .map(|prepared| prepared.y.as_slice())
-                    .collect::<Vec<_>>();
-                let fft = cufft::fft64_batch(&batch)?;
-                prepared
-                    .into_par_iter()
-                    .zip(fft)
-                    .map(|(prepared, fft)| {
-                        let saves = prepared.finish(&fft)?;
+                let gpu_memory_bytes = cufft::first_gpu_memory_bytes()?;
+                debug!("GPU has {} MB of RAM", gpu_memory_bytes / 10u64.pow(6));
 
-                        // // Performance hack: intentionally leak memory to avoid drop
-                        // std::mem::forget(fft);
-                        // std::mem::forget(prepared);
+                // We need to peek at the first prepared FFT because the y length is nontrivial
+                let fft_len = {
+                    match prepared_generator.peek().unwrap().as_ref() {
+                        Ok(prepared) => prepared.y.len(),
+                        Err(e) => {
+                            // anyhow errors cannot be cloned :(
+                            bail!("failed to find FFT length: {}", e.to_string());
+                        }
+                    }
+                };
 
-                        Ok(saves)
-                    })
-                    .collect::<Result<Vec<_>>>()?
-                    .into_iter()
-                    .for_each(|saves| {
-                        save_records.extend(saves);
-                    });
+                // Check if we need to split the batches
+                // We conservatively do not allocate more than 1/4th of the available memory
+                let gpu_memory_bytes = gpu_memory_bytes as usize / 4;
+                let single_fft_bytes = fft_len * std::mem::size_of::<f64>();
+                let ffts_per_batch = gpu_memory_bytes / single_fft_bytes;
+
+                ensure!(
+                    ffts_per_batch > 0,
+                    "the GPU does not have enough RAM for a single FFT"
+                );
+
+                let n_subbatches = (fft_amount as f64 / ffts_per_batch as f64).ceil() as usize;
+                info!(
+                    "GPU will run {n_subbatches} batches of {} MB each",
+                    ffts_per_batch * single_fft_bytes / 10usize.pow(6)
+                );
+
+                // Now we only generate the required amount of FFTs,
+                // minimizing memory load.
+                for prepared in &prepared_generator.chunks(ffts_per_batch) {
+                    // "Bubble up" the errors
+                    let prepared = prepared.collect::<Result<Vec<_>>>()?;
+
+                    // Extract y slices
+                    let subbatch = prepared
+                        .iter()
+                        .map(|prepared| prepared.y.as_slice())
+                        .collect::<Vec<_>>();
+
+                    // Compute FFT on GPU
+                    let fft = cufft::fft64_batch(&subbatch)?;
+                    prepared
+                        .into_par_iter()
+                        .zip(fft)
+                        .map(|(prepared, fft)| prepared.finish(&fft))
+                        .collect::<Result<Vec<_>>>()?
+                        .into_iter()
+                        .for_each(|saves| {
+                            save_records.extend(saves);
+                        });
+                }
             }
             #[cfg(not(feature = "cuda"))]
             unreachable!();
         } else {
             info!("Computing FFTs on CPU");
-            prepared
-                .into_par_iter()
-                .map(|mut prepared| {
+            prepared_generator
+                .par_bridge()
+                .map(|prepared| {
+                    let mut prepared = prepared?;
+
                     let name = &prepared.settings.extract.name;
                     let src = prepared.settings.file.source.as_str();
 
                     debug!("Computing FFT on CPU for '{src}':'{name}'");
                     fft::fft64_packed(&mut prepared.y)?;
                     let fft = fft::fft64_unpack(&prepared.y);
-
                     let saves = prepared.finish(&fft)?;
-
-                    // // Performance hack: intentionally leak memory to avoid drop
-                    // std::mem::forget(fft);
-                    // std::mem::forget(prepared);
 
                     Ok(saves)
                 })
@@ -421,9 +477,6 @@ fn _main() -> Result<()> {
                 });
         };
     }
-
-    // // Performance hack: intentionally leak memory to avoid drop
-    // std::mem::forget(data);
 
     let end = Instant::now();
     let runtime_ms = (end - start).as_millis();
@@ -455,11 +508,7 @@ fn _main() -> Result<()> {
 }
 
 impl Settings {
-    fn prepare<'data, 'settings: 'data>(
-        &'settings self,
-        data: &'data Data,
-        project: &'settings Project,
-    ) -> Result<Option<Prepared<'data>>> {
+    fn prepare(self: Arc<Self>, data: &Data, project: Project) -> Result<Option<Prepared>> {
         let settings = self;
         let Extract { name, x, y } = &settings.extract;
         let src = settings.file.source.as_str();
@@ -499,8 +548,8 @@ impl Settings {
     }
 }
 
-impl<'a> Prepared<'a> {
-    fn preprocess(self) -> Result<(Preprocessed<'a>, Vec<SaveRecord>)> {
+impl Prepared {
+    fn preprocess(self) -> Result<(Preprocessed, Vec<SaveRecord>)> {
         let Self {
             project,
             settings,
@@ -525,7 +574,7 @@ impl<'a> Prepared<'a> {
         // Output raw data
         trace!("Storing raw data for '{src}':'{name}'");
         saves.push(save(
-            project,
+            &project,
             name,
             "raw",
             &settings.file.dest,
@@ -635,7 +684,7 @@ impl<'a> Prepared<'a> {
         // Output preprocessed data
         trace!("Storing preprocessed data for '{src}':'{name}'");
         saves.push(save(
-            project,
+            &project,
             name,
             "preprocessed",
             &settings.file.dest,
@@ -658,7 +707,7 @@ impl<'a> Prepared<'a> {
             // Output inverted data
             trace!("Storing inverted data for '{src}':'{name}'");
             saves.push(save(
-                project,
+                &project,
                 name,
                 "inverted",
                 &settings.file.dest,
@@ -692,12 +741,12 @@ impl<'a> Prepared<'a> {
     }
 }
 
-impl<'a> Preprocessed<'a> {
+impl Preprocessed {
     fn process(
         self,
         n_interp_global: Option<u64>,
         n_interp_var: Option<u64>,
-    ) -> Result<(Processed<'a>, Vec<SaveRecord>)> {
+    ) -> Result<(Processed, Vec<SaveRecord>)> {
         let Self {
             project,
             settings,
@@ -759,7 +808,7 @@ impl<'a> Preprocessed<'a> {
                 // Output post interpolation data
                 trace!("Storing post-interpolation data for '{src}':'{name}'");
                 saves.push(save(
-                    project,
+                    &project,
                     name,
                     "post interpolation",
                     &settings.file.dest,
@@ -798,14 +847,14 @@ impl<'a> Preprocessed<'a> {
     }
 }
 
-impl<'a> Processed<'a> {
+impl Processed {
     fn prepare_fft(
         self,
-        fft_settings: &'a Fft,
+        fft_settings: Fft,
         domain_left: f64,
         domain_right: f64,
         sweep_index: Option<usize>,
-    ) -> Result<PreparedFft<'a>> {
+    ) -> Result<PreparedFft> {
         let Self {
             project,
             settings,
@@ -904,7 +953,7 @@ impl<'a> Processed<'a> {
     }
 }
 
-impl<'a> PreparedFft<'a> {
+impl PreparedFft {
     fn finish(&self, fft: &[Complex64]) -> Result<Vec<SaveRecord>> {
         let Self {
             project,
@@ -984,37 +1033,37 @@ impl<'a> PreparedFft<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct Prepared<'a> {
-    project: &'a Project,
-    settings: &'a Settings,
+struct Prepared {
+    project: Project,
+    settings: Arc<Settings>,
     x_label: String,
     y_label: String,
     xy: XY,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct Preprocessed<'a> {
-    project: &'a Project,
-    settings: &'a Settings,
+struct Preprocessed {
+    project: Project,
+    settings: Arc<Settings>,
     x_label: String,
     y_label: String,
     xy: MonotonicXY,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct Processed<'a> {
-    project: &'a Project,
-    settings: &'a Settings,
+struct Processed {
+    project: Project,
+    settings: Arc<Settings>,
     x_label: String,
     y_label: String,
     xy: MonotonicXY,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct PreparedFft<'a> {
-    project: &'a Project,
-    settings: &'a Settings,
-    fft_settings: &'a Fft,
+struct PreparedFft {
+    project: Project,
+    settings: Arc<Settings>,
+    fft_settings: Fft,
     sweep_index: Option<usize>,
     x_label: String,
     y_label: String,
