@@ -410,8 +410,8 @@ fn _main() -> Result<()> {
                 };
 
                 // Check if we need to split the batches
-                // We conservatively do not allocate more than 1/4th of the available memory
-                let gpu_memory_bytes = gpu_memory_bytes as usize / 4;
+                // We conservatively do not allocate more than 1/2 of the available memory
+                let gpu_memory_bytes = gpu_memory_bytes as usize / 2;
                 let single_fft_bytes = fft_len * std::mem::size_of::<f64>();
                 let ffts_per_batch = gpu_memory_bytes / single_fft_bytes;
 
@@ -423,7 +423,7 @@ fn _main() -> Result<()> {
                 let n_subbatches = (fft_amount as f64 / ffts_per_batch as f64).ceil() as usize;
                 info!(
                     "GPU will run {n_subbatches} batches of {} MB each",
-                    ffts_per_batch * single_fft_bytes / 10usize.pow(6)
+                    fft_amount.min(ffts_per_batch) * single_fft_bytes / 10usize.pow(6)
                 );
 
                 // Now we only generate the required amount of FFTs,
