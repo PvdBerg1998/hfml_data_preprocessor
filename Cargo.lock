@@ -558,7 +558,7 @@ dependencies = [
 
 [[package]]
 name = "hfml_data_preprocessor"
-version = "1.8.2"
+version = "1.8.3"
 dependencies = [
  "anyhow",
  "built",

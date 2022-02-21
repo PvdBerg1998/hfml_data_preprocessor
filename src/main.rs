@@ -433,19 +433,18 @@ fn _main() -> Result<()> {
                     .into_iter()
                     .enumerate()
                 {
-                    info!("Running GPU FFT batch #{i}");
-
-                    // "Bubble up" the errors
+                    info!("Preparing FFT batch #{i}");
                     let prepared = prepared.collect::<Result<Vec<_>>>()?;
-
-                    // Extract y slices
                     let subbatch = prepared
                         .iter()
                         .map(|prepared| prepared.y.as_slice())
                         .collect::<Vec<_>>();
 
                     // Compute FFT on GPU
+                    info!("Running GPU FFT batch #{i}");
                     let fft = cufft::fft64_batch(&subbatch)?;
+
+                    info!("FFT postprocessing batch #{i}");
                     prepared
                         .into_par_iter()
                         .zip(fft)
@@ -469,7 +468,7 @@ fn _main() -> Result<()> {
                     let name = &prepared.settings.extract.name;
                     let src = prepared.settings.file.source.as_str();
 
-                    debug!("Computing FFT on CPU for '{src}':'{name}'");
+                    debug!("Computing CPU FFT for '{src}':'{name}'");
                     fft::fft64_packed(&mut prepared.y)?;
                     let fft = fft::fft64_unpack(&prepared.y);
                     let saves = prepared.finish(&fft)?;
@@ -874,7 +873,7 @@ impl Processed {
         let window_label = sweep_index
             .map(|i| format!("window #{i}"))
             .unwrap_or_else(|| "(full window)".to_owned());
-        info!("Preparing file '{src}': dataset '{name}' for FFT {window_label}");
+        debug!("Preparing file '{src}': dataset '{name}' for FFT {window_label}");
 
         // Trim domain
         // The domain is calculated internally so we may assume its boundaries are correct
@@ -978,7 +977,7 @@ impl PreparedFft {
         let name = &settings.extract.name;
         let src = settings.file.source.as_str();
 
-        info!("FFT postprocessing file '{src}': dataset '{name}'");
+        debug!("FFT postprocessing file '{src}': dataset '{name}'");
         let mut saves = vec![];
 
         // Prepare frequency space cutoffs
