@@ -3,10 +3,10 @@ This tool is meant to quickly extract, inspect, preprocess and Fourier transform
 
 ## Buzzwords
 - State-of-the-art parsers and formatters ([some](https://arxiv.org/abs/2101.11408) [literature](https://dl.acm.org/doi/10.1145/3192366.3192369))
-- Optional multithreading and NVIDIA GPU support
+- Optional multithreading and NVIDIA GPU support with automatic batching
 - Full data and settings verification
 - Autovectorisation through LLVM and rustc
-- Insane runtime performance: ~500 ms for a full dataset
+- Insane runtime performance: ~500 ms per project
 
 ## Capabilities
 ### Preprocessing
@@ -35,7 +35,6 @@ MessagePack is recommended because it skips converting the floating point data b
 - FTFT (Finite Time Fourier Transform), subdomain lower/upper/center uniform sweeping
 
 # Known issues
-- FTFT is not properly tested
 - FTFT shifted windowing is not implemented yet
 - Other filtering methods such as Savitzky-Golay are missing
 
