@@ -206,8 +206,6 @@ fn _main() -> Result<()> {
         })
         .collect::<Vec<_>>();
 
-    debug!("Calculating automatic interpolation statistics");
-
     // Calculate minimum dx based interpolation amounts per variable per file
     let n_per_var = preprocessed
         .iter()
@@ -258,13 +256,13 @@ fn _main() -> Result<()> {
         let n_mean = stats::mean(&float_ns);
         let n_stddev = stats::variance_mean(&float_ns, n_mean).sqrt();
         let n_mean_log2 = n_mean.log2().ceil() as u64;
-        trace!("Minimum dx interpolation stats for {var}: mean = {n_mean} ~ 2^{n_mean_log2}, stddev = {n_stddev:.2}");
+        debug!("Minimum dx interpolation stats for {var}: mean = {n_mean} ~ 2^{n_mean_log2}, stddev = {n_stddev:.2}");
 
         // Store the highest amount
         (var, ns.into_iter().max().unwrap())
     }).collect::<HashMap<_, _>>();
     let max_n = max_n_per_var.values().max().copied();
-    trace!("Final dx interpolation maxima: {max_n_per_var:#?}. Maximum: {max_n:#?}");
+    debug!("Final dx interpolation maxima: {max_n_per_var:#?}. Maximum: {max_n:#?}");
 
     // Process data
     let processed = preprocessed
@@ -677,8 +675,9 @@ impl Prepared {
             "Right trim {trim_right} is outside domain {:?} for '{src}':'{name}'",
             xy.right_x()
         );
-        trace!("Data domain: [{trim_left},{trim_right}]");
+        trace!("Desired data domain: [{trim_left},{trim_right}]");
         xy.trim(trim_left, trim_right);
+        trace!("Actual data domain: [{},{}]", xy.left_x(), xy.right_x());
 
         // Premultiplication
         // Use local override prefactor if set
@@ -938,15 +937,12 @@ impl Processed {
                     desired_n * std::mem::size_of::<f64>() / 1024usize.pow(2)
                 );
             y.resize(desired_n, 0.0);
+        } else {
+            ensure!(
+                y.len().is_power_of_two(),
+                "Data length is larger than 2^{desired_n_log2}, so no padding can take place, but the length is not a power of two."
+            );
         }
-
-        // Check power of 2
-        // This could be false if we set a padding length smaller than the data length
-        let n = y.len();
-        ensure!(
-            n.is_power_of_two(),
-            "FFT is only supported for data length 2^n"
-        );
 
         Ok(PreparedFft {
             project,

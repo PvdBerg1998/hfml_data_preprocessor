@@ -30,6 +30,9 @@ use std::str::FromStr;
 // Up to this amount can be stored per line without another heap allocation
 const HEADER_GUESS: usize = 16;
 
+// Float comparison maximum ULPS error
+const CMP_ULPS: u32 = 10;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Data {
     data: HashMap<String, Vec<f64>>,
@@ -305,8 +308,16 @@ impl MonotonicXY {
     /// ### Panics
     /// - When a boundary is higher than the largest x value in the data
     pub fn mask(&mut self, lower_x: f64, upper_x: f64) {
-        let lower = self.x.iter().position(|&x| x >= lower_x).unwrap();
-        let upper = self.x.iter().position(|&x| x >= upper_x).unwrap();
+        let lower = if approx::ulps_eq!(lower_x, self.left_x(), max_ulps = CMP_ULPS) {
+            0
+        } else {
+            self.x.iter().position(|&x| x >= lower_x).unwrap()
+        };
+        let upper = if approx::ulps_eq!(upper_x, self.right_x(), max_ulps = CMP_ULPS) {
+            self.x.len() - 1
+        } else {
+            self.x.iter().position(|&x| x >= upper_x).unwrap()
+        };
 
         let mut i = 0usize;
         self.x.retain(|_| {
@@ -327,12 +338,16 @@ impl MonotonicXY {
     /// ### Panics
     /// - When a boundary is higher than the largest x value in the data
     pub fn trim(&mut self, lower_x: f64, upper_x: f64) {
-        if lower_x == self.left_x() && upper_x == self.right_x() {
-            return;
-        }
-
-        let lower = self.x.iter().position(|&x| x >= lower_x).unwrap();
-        let upper = self.x.iter().position(|&x| x >= upper_x).unwrap();
+        let lower = if approx::ulps_eq!(lower_x, self.left_x(), max_ulps = CMP_ULPS) {
+            0
+        } else {
+            self.x.iter().position(|&x| x >= lower_x).unwrap()
+        };
+        let upper = if approx::ulps_eq!(upper_x, self.right_x(), max_ulps = CMP_ULPS) {
+            self.x.len() - 1
+        } else {
+            self.x.iter().position(|&x| x >= upper_x).unwrap()
+        };
         self.x.drain(0..lower);
         self.y.drain(0..lower);
         self.x.truncate(upper - lower);
