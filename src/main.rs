@@ -255,19 +255,20 @@ fn _main() -> Result<()> {
         })
         .into_group_map();
 
-    // Calculate statistics and find the median interpolation amount
+    // Calculate statistics and find the mean interpolation amount
     let max_n_per_var = n_per_var.into_iter().map(|(var, ns)| {
         let float_ns = ns.iter().map(|&n| n as f64).collect::<Vec<_>>();
         let n_mean = stats::mean(&float_ns);
         let n_stddev = stats::variance_mean(&float_ns, n_mean).sqrt();
         let n_mean_log2 = n_mean.log2().ceil() as u64;
-        debug!("Minimum dx interpolation stats for {var}: mean = {n_mean} ~ 2^{n_mean_log2}, stddev = {n_stddev:.2}");
-
-        // Store the mean
+        debug!("Minimum dx interpolation for {var}: mean = {n_mean:.2} ~ 2^{n_mean_log2}, stddev = {n_stddev:.2}");
         (var, n_mean as u64)
     }).collect::<HashMap<_, _>>();
+
+    // May be None if the template does not use dx based interpolation
     let max_n = max_n_per_var.values().max().copied();
-    debug!("Final dx interpolation maxima: {max_n_per_var:#?}. Maximum: {max_n:#?}");
+    info!("Local dx interpolation maxima: {max_n_per_var:?}");
+    info!("Global dx interpolation maximum: {max_n:?}");
 
     // Process data
     let processed = preprocessed
