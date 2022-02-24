@@ -969,8 +969,8 @@ impl Processed {
             });
 
             // Avoid numerical error and leaking at the edges
-            *y.first_mut().unwrap() = 0.0;
-            *y.last_mut().unwrap() = 0.0;
+            *y.first_mut().expect("empty dataset") = 0.0;
+            *y.last_mut().expect("empty dataset") = 0.0;
         }
 
         if n_pad > 0 {

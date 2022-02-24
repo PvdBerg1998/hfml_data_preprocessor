@@ -89,10 +89,16 @@ pub fn plot<P: AsRef<Path>>(
 ) -> Result<()> {
     let _ = std::fs::remove_file(&out);
 
-    let xmin = *x.first().unwrap();
-    let xmax = *x.last().unwrap();
-    let ymin = *y.iter().min_by_key(|&&f| float_ord::FloatOrd(f)).unwrap();
-    let ymax = *y.iter().max_by_key(|&&f| float_ord::FloatOrd(f)).unwrap();
+    let xmin = *x.first().expect("empty dataset");
+    let xmax = *x.last().expect("empty dataset");
+    let ymin = *y
+        .iter()
+        .min_by_key(|&&f| float_ord::FloatOrd(f))
+        .expect("empty dataset");
+    let ymax = *y
+        .iter()
+        .max_by_key(|&&f| float_ord::FloatOrd(f))
+        .expect("empty dataset");
 
     if xmin >= xmax {
         panic!("plotter only works with monotonically increasing data");

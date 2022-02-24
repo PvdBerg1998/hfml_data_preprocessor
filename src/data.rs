@@ -190,7 +190,7 @@ impl XY {
     pub fn into_monotonic(self) -> MonotonicXY {
         let XY { mut x, mut y } = self;
 
-        if *x.last().unwrap() < 0.0 {
+        if *x.last().expect("empty dataset") < 0.0 {
             // Guess that the dataset is going to be flipped by sorting
             x.reverse();
             y.reverse();
@@ -228,11 +228,11 @@ impl MonotonicXY {
     }
 
     pub fn left_x(&self) -> f64 {
-        *self.x.first().unwrap()
+        *self.x.first().expect("empty dataset")
     }
 
     pub fn right_x(&self) -> f64 {
-        *self.x.last().unwrap()
+        *self.x.last().expect("empty dataset")
     }
 
     pub fn x(&self) -> &[f64] {
