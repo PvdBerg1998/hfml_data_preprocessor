@@ -773,6 +773,8 @@ impl Prepared {
                     "tags": settings.file.metadata,
                 }),
             )?);
+
+            trace!("Inverted data domain: [{},{}]", xy.left_x(), xy.right_x());
         }
 
         let x_label = if settings.preprocessing.invert_x {

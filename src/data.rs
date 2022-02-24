@@ -30,9 +30,6 @@ use std::str::FromStr;
 // Up to this amount can be stored per line without another heap allocation
 const HEADER_GUESS: usize = 16;
 
-// Float comparison maximum ULPS error
-const CMP_ULPS: u32 = 10;
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Data {
     data: HashMap<String, Vec<f64>>,
@@ -152,12 +149,13 @@ impl Data {
     /// ### Panics
     /// - When columns do not exist
     /// - When columns do not have the same length
-    /// - When columns are empty
+    /// - When columns have less than 2 elements
     pub fn clone_xy(&self, x: &str, y: &str) -> XY {
         let x = self.data.get(x).expect("x column does not exist");
         let y = self.data.get(y).expect("y column does not exist");
         assert_eq!(x.len(), y.len(), "XY columns have a different length");
         assert!(!x.is_empty(), "XY columns are empty");
+        assert!(x.len() >= 2, "XY columns have less than 2 elements");
         XY {
             x: x.clone(),
             y: y.clone(),
@@ -243,6 +241,10 @@ impl MonotonicXY {
         &self.y
     }
 
+    pub fn dx(&self) -> f64 {
+        self.x[1] - self.x[0]
+    }
+
     pub fn y_mut(&mut self) -> &mut [f64] {
         &mut self.y
     }
@@ -307,13 +309,13 @@ impl MonotonicXY {
     /// Removes a range of data
     /// ### Panics
     /// - When a boundary is higher than the largest x value in the data
-    /// - When the boundaries are equal
+    /// - When the boundaries are approximately equal
     pub fn mask(&mut self, lower_x: f64, upper_x: f64) {
-        if approx::ulps_eq!(lower_x, upper_x, max_ulps = CMP_ULPS) {
+        if (upper_x - lower_x).abs() <= 2.0 * self.dx() {
             panic!("Trim boundaries are equal");
         }
 
-        let lower = if approx::ulps_eq!(lower_x, self.left_x(), max_ulps = CMP_ULPS) {
+        let lower = if (self.left_x() - lower_x).abs() <= 2.0 * self.dx() {
             0
         } else {
             self.x
@@ -321,7 +323,7 @@ impl MonotonicXY {
                 .position(|&x| x >= lower_x)
                 .expect("mask left x is outside domain")
         };
-        let upper = if approx::ulps_eq!(upper_x, self.right_x(), max_ulps = CMP_ULPS) {
+        let upper = if (self.right_x() - upper_x).abs() <= 2.0 * self.dx() {
             self.x.len() - 1
         } else {
             self.x
@@ -348,29 +350,30 @@ impl MonotonicXY {
     /// Truncates the stored values to be inside or equal to the given boundaries
     /// ### Panics
     /// - When a boundary is higher than the largest x value in the data
-    /// - When the boundaries are equal
+    /// - When the boundaries are approximately equal
     /// - When the resulting dataset is empty
     pub fn trim(&mut self, lower_x: f64, upper_x: f64) {
-        if approx::ulps_eq!(lower_x, upper_x, max_ulps = CMP_ULPS) {
+        if (upper_x - lower_x).abs() <= 2.0 * self.dx() {
             panic!("Trim boundaries are equal");
         }
 
-        let lower = if approx::ulps_eq!(lower_x, self.left_x(), max_ulps = CMP_ULPS) {
+        let lower = if (self.left_x() - lower_x).abs() <= 2.0 * self.dx() {
             0
         } else {
             self.x
                 .iter()
                 .position(|&x| x >= lower_x)
-                .expect("mask left x is outside domain")
+                .expect("trim left x is outside domain")
         };
-        let upper = if approx::ulps_eq!(upper_x, self.right_x(), max_ulps = CMP_ULPS) {
+        let upper = if (self.right_x() - upper_x).abs() <= 2.0 * self.dx() {
             self.x.len() - 1
         } else {
             self.x
                 .iter()
                 .position(|&x| x >= upper_x)
-                .expect("mask right x is outside domain")
+                .expect("trim right x is outside domain")
         };
+
         self.x.drain(0..lower);
         self.y.drain(0..lower);
         self.x.truncate(upper - lower);
