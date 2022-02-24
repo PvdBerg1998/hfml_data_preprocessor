@@ -58,6 +58,9 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+// The amount of dx samples we use to calculate the minimum dx of a dataset
+const INTERP_MIN_DX_SAMPLES: usize = 5;
+
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 struct Args {
     template: Option<PathBuf>,
@@ -227,8 +230,8 @@ fn _main() -> Result<()> {
             let src = preprocessed.settings.file.source.as_str();
             trace!("Calculating minimum delta x for all '{src}':'{name}'");
 
-            // Loop over x, compare neighbours, find smallest interval
-            let n = match preprocessed
+            // Loop over x, compare neighbours, sort
+            let mut dx = preprocessed
                 .xy
                 .x()
                 .windows(2)
@@ -236,21 +239,23 @@ fn _main() -> Result<()> {
                     let (a, b) = (window[0], window[1]);
                     (b - a).abs()
                 })
-                .min_by_key(|&dx| float_ord::FloatOrd(dx))
-            {
-                Some(dx) => {
-                    let n = preprocessed.xy.domain_len() / dx;
-                    n.ceil() as u64
-                }
-                None => bail!("Unable to determine minimum delta x for '{src}':'{name}'"),
-            };
-            Ok((name.to_owned(), n))
+                .map(|dx| float_ord::FloatOrd(dx))
+                .collect::<Vec<_>>();
+            dx.sort();
+
+            // Take the median of the smallest N intervals
+            // This is done to avoid using a spurious extremely small interval
+            let median_dx = dx
+                .get(INTERP_MIN_DX_SAMPLES / 2)
+                .unwrap_or(dx.last().expect("empty dataset"))
+                .0;
+
+            let n = (preprocessed.xy.domain_len() / median_dx).ceil() as u64;
+            (name.to_owned(), n)
         })
-        .collect::<Result<Vec<_>>>()?
-        .into_iter()
         .into_group_map();
 
-    // Calculate statistics and find the mean interpolation amount
+    // Calculate statistics and find the median interpolation amount
     let max_n_per_var = n_per_var.into_iter().map(|(var, ns)| {
         let float_ns = ns.iter().map(|&n| n as f64).collect::<Vec<_>>();
         let n_mean = stats::mean(&float_ns);

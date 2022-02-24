@@ -241,7 +241,7 @@ impl MonotonicXY {
         &self.y
     }
 
-    pub fn dx(&self) -> f64 {
+    fn dx(&self) -> f64 {
         self.x[1] - self.x[0]
     }
 
