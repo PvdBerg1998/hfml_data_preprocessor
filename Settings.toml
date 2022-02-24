@@ -240,7 +240,7 @@ zero_pad = "2^22"
 # - "full"      : No sweeping, use full data range.
 # - "lower"     : Sweep lower boundary, keep upper boundary fixed.
 # - "upper"     : Sweep upper boundary, keep lower boundary fixed.
-# - "windows"   : Moving window, with 50% overlap and a width defined below.
+# - "windows"   : Moving window, with 50% overlap.
 #
 # Default: "full"
 sweep = "upper"
@@ -250,6 +250,9 @@ sweep = "upper"
 # Must be more than 1.
 #
 # This divides the domain into n equal parts.
+# If sweep is set to "lower" or "upper", the sweep is uniform in x.
+# If sweep is set to "windows", the sweep is uniform in x or 1/x,
+# depending on the setting invert_x.
 sweep_steps = 5
 
 #
@@ -266,8 +269,8 @@ dest = "dir1/measurement_014"
 # Other tags will be considered as metadata and stored in the file metadata database
 # This may help to index your generated files for postprocessing.
 # You may add an arbitrary amount to each file
-temperature = "4.2K"
 index = 14
+temperature = "4.2K"
 
 #
 # RENAMING

@@ -293,8 +293,14 @@ fn _main() -> Result<()> {
             processed
                 .into_iter()
                 .flat_map(move |processed| {
+                    // Extract boundaries
+                    let invert_x = processed.settings.preprocessing.invert_x;
                     let left = processed.xy.left_x();
                     let right = processed.xy.right_x();
+
+                    // Left and right boundaries in units of x
+                    let x_left = if invert_x { 1.0 / right } else { left };
+                    let x_right = if invert_x { 1.0 / left } else { right };
 
                     type Iter = Box<dyn Iterator<Item = Result<PreparedFft>> + Send>;
 
@@ -324,15 +330,19 @@ fn _main() -> Result<()> {
                             }
 
                             // Sweep lower boundary while the upper boundary stays fixed
-                            let dx = (right - left) / steps as f64;
+                            // Sweep uniformly in x
+                            let dx = (x_right - x_left) / steps as f64;
 
                             // Iterate left boundary down, starting 1 tick left from the right side
                             let fft = fft.clone();
-                            let iter = (0..steps)
-                                .rev()
+                            let iter = (1..=steps)
                                 .map(move |i| {
-                                    let left = left + i as f64 * dx;
-                                    (i, left, right)
+                                    let x_left = x_right - i as f64 * dx;
+                                    if invert_x {
+                                        (i, 1.0 / x_right, 1.0 / x_left)
+                                    } else {
+                                        (i, x_left, x_right)
+                                    }
                                 })
                                 .map(move |(i, left, right)| {
                                     processed
@@ -351,13 +361,46 @@ fn _main() -> Result<()> {
                             }
 
                             // Sweep upper boundary while the lower boundary stays fixed
-                            let dx = (right - left) / steps as f64;
+                            // Sweep uniformly in x
+                            let dx = (x_right - x_left) / steps as f64;
 
                             // Iterate right boundary up, starting 1 tick right from the left side
                             let fft = fft.clone();
                             let iter = (1..=steps)
                                 .map(move |i| {
-                                    let right = left + i as f64 * dx;
+                                    let x_right = x_left + i as f64 * dx;
+                                    if invert_x {
+                                        (i, 1.0 / x_right, 1.0 / x_left)
+                                    } else {
+                                        (i, x_left, x_right)
+                                    }
+                                })
+                                .map(move |(i, left, right)| {
+                                    processed
+                                        .clone()
+                                        .prepare_fft(fft.clone(), left, right, Some(i))
+                                });
+                            Box::new(iter) as Iter
+                        }
+                        FftSweep::Windows => {
+                            let steps = match fft.sweep_steps {
+                                Some(steps) => steps,
+                                None => return err!("FFT sweep steps not defined"),
+                            };
+                            if steps <= 1 {
+                                return err!("FFT sweep steps must be larger than 1");
+                            }
+
+                            // Sweep center of window
+                            // Use 50% overlap between the windows
+                            let dx = (right - left) / ((steps + 1) as f64);
+
+                            // Iterate right boundary up, starting 1 tick right from the left side
+                            let fft = fft.clone();
+                            let iter = (0..steps)
+                                .map(move |i| {
+                                    let left = left + i as f64 * dx;
+                                    let right = left + (i + 2) as f64 * dx;
                                     (i, left, right)
                                 })
                                 .map(move |(i, left, right)| {
@@ -367,7 +410,6 @@ fn _main() -> Result<()> {
                                 });
                             Box::new(iter) as Iter
                         }
-                        FftSweep::Windows => todo!(),
                     }
                 })
                 .peekable()

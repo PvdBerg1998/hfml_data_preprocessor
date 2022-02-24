@@ -35,7 +35,6 @@ MessagePack is recommended because it skips converting the floating point data b
 - FTFT (Finite Time Fourier Transform), subdomain lower/upper/center uniform sweeping
 
 # Known issues
-- FTFT shifted windowing is not implemented yet
 - Other filtering methods such as Savitzky-Golay are missing
 
 # Usage

@@ -154,8 +154,8 @@ impl Data {
     /// - When columns do not have the same length
     /// - When columns are empty
     pub fn clone_xy(&self, x: &str, y: &str) -> XY {
-        let x = self.data.get(x).unwrap();
-        let y = self.data.get(y).unwrap();
+        let x = self.data.get(x).expect("x column does not exist");
+        let y = self.data.get(y).expect("y column does not exist");
         assert_eq!(x.len(), y.len(), "XY columns have a different length");
         assert!(!x.is_empty(), "XY columns are empty");
         XY {
@@ -307,16 +307,27 @@ impl MonotonicXY {
     /// Removes a range of data
     /// ### Panics
     /// - When a boundary is higher than the largest x value in the data
+    /// - When the boundaries are equal
     pub fn mask(&mut self, lower_x: f64, upper_x: f64) {
+        if approx::ulps_eq!(lower_x, upper_x, max_ulps = CMP_ULPS) {
+            panic!("Trim boundaries are equal");
+        }
+
         let lower = if approx::ulps_eq!(lower_x, self.left_x(), max_ulps = CMP_ULPS) {
             0
         } else {
-            self.x.iter().position(|&x| x >= lower_x).unwrap()
+            self.x
+                .iter()
+                .position(|&x| x >= lower_x)
+                .expect("mask left x is outside domain")
         };
         let upper = if approx::ulps_eq!(upper_x, self.right_x(), max_ulps = CMP_ULPS) {
             self.x.len() - 1
         } else {
-            self.x.iter().position(|&x| x >= upper_x).unwrap()
+            self.x
+                .iter()
+                .position(|&x| x >= upper_x)
+                .expect("mask right x is outside domain")
         };
 
         let mut i = 0usize;
@@ -337,20 +348,34 @@ impl MonotonicXY {
     /// Truncates the stored values to be inside or equal to the given boundaries
     /// ### Panics
     /// - When a boundary is higher than the largest x value in the data
+    /// - When the boundaries are equal
+    /// - When the resulting dataset is empty
     pub fn trim(&mut self, lower_x: f64, upper_x: f64) {
+        if approx::ulps_eq!(lower_x, upper_x, max_ulps = CMP_ULPS) {
+            panic!("Trim boundaries are equal");
+        }
+
         let lower = if approx::ulps_eq!(lower_x, self.left_x(), max_ulps = CMP_ULPS) {
             0
         } else {
-            self.x.iter().position(|&x| x >= lower_x).unwrap()
+            self.x
+                .iter()
+                .position(|&x| x >= lower_x)
+                .expect("mask left x is outside domain")
         };
         let upper = if approx::ulps_eq!(upper_x, self.right_x(), max_ulps = CMP_ULPS) {
             self.x.len() - 1
         } else {
-            self.x.iter().position(|&x| x >= upper_x).unwrap()
+            self.x
+                .iter()
+                .position(|&x| x >= upper_x)
+                .expect("mask right x is outside domain")
         };
         self.x.drain(0..lower);
         self.y.drain(0..lower);
         self.x.truncate(upper - lower);
         self.y.truncate(upper - lower);
+
+        assert!(!self.x.is_empty(), "Trim resulted in an empty domain");
     }
 }
