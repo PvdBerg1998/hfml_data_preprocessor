@@ -401,12 +401,13 @@ fn _main() -> Result<()> {
                             // Use 50% overlap between the windows
                             let dx = (right - left) / ((steps + 1) as f64);
 
-                            // Iterate right boundary up, starting 1 tick right from the left side
+                            // Move the window along the domain
                             let fft = fft.clone();
                             let iter = (0..steps)
                                 .map(move |i| {
-                                    let left = left + i as f64 * dx;
+                                    // NB. Careful with shadowing!
                                     let right = left + (i + 2) as f64 * dx;
+                                    let left = left + i as f64 * dx;
                                     (i, left, right)
                                 })
                                 .map(move |(i, left, right)| {
