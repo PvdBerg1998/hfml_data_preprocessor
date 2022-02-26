@@ -68,6 +68,8 @@ struct Args {
     template: Option<PathBuf>,
     #[clap(short, long, parse(from_occurrences))]
     verbose: usize,
+    #[clap(short, long)]
+    quiet: bool,
 }
 
 fn main() {
@@ -89,10 +91,14 @@ fn _main() -> Result<()> {
         .unwrap()
         .as_millis();
     let _ = std::fs::create_dir("log");
-    let log_level = match args.verbose {
-        0 => LevelFilter::Info,
-        1 => LevelFilter::Debug,
-        _ => LevelFilter::Trace,
+    let log_level = if args.quiet {
+        LevelFilter::Warn
+    } else {
+        match args.verbose {
+            0 => LevelFilter::Info,
+            1 => LevelFilter::Debug,
+            _ => LevelFilter::Trace,
+        }
     };
     let log_path = format!("log/hfml_data_preprocessor_{unix}.log");
     CombinedLogger::init(vec![
@@ -466,7 +472,7 @@ fn _main() -> Result<()> {
                 // We conservatively do not allocate more than 1/4th of the available memory,
                 // as we expect to need around 3N floats + some workspace.
                 let gpu_memory_bytes = gpu_memory_bytes as usize / 4;
-                let single_fft_bytes = fft_len * std::mem::size_of::<f64>();
+                let single_fft_bytes = fft_len * std::mem::size_of::<f32>();
                 let ffts_per_batch = gpu_memory_bytes / single_fft_bytes;
 
                 ensure!(
@@ -497,15 +503,18 @@ fn _main() -> Result<()> {
                         .unzip();
 
                     // Convert data to a contiguous buffer of f32
+                    let ffts = data.len(); // NB. Not necessarily equal to ffts_per_batch!
                     let subbatch = data
                         .into_iter()
                         .flatten()
                         .map(|x| x as f32)
                         .collect::<Vec<_>>();
 
+                    assert_eq!(subbatch.len(), ffts * fft_len);
+
                     // Compute FFT on GPU
                     info!("Running GPU FFT batch #{i}");
-                    let fft = cufft::fft32_batch_contiguous(&subbatch, ffts_per_batch)?;
+                    let fft = cufft::fft32_batch_contiguous(&subbatch, ffts)?;
 
                     info!("FFT postprocessing batch #{i}");
                     prepared
