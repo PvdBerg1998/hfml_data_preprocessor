@@ -331,7 +331,7 @@ dependencies = [
 
 [[package]]
 name = "cufft_rust"
-version = "0.2.3"
+version = "0.4.1"
 dependencies = [
  "bindgen",
  "drop_guard",
@@ -558,7 +558,7 @@ dependencies = [
 
 [[package]]
 name = "hfml_data_preprocessor"
-version = "1.10.3"
+version = "1.10.4"
 dependencies = [
  "anyhow",
  "built",
@@ -570,6 +570,7 @@ dependencies = [
  "itertools",
  "log",
  "num-complex",
+ "num-traits",
  "plotters",
  "rayon",
  "rmp",

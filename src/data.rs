@@ -241,10 +241,6 @@ impl MonotonicXY {
         &self.y
     }
 
-    fn dx(&self) -> f64 {
-        self.x[1] - self.x[0]
-    }
-
     pub fn y_mut(&mut self) -> &mut [f64] {
         &mut self.y
     }
@@ -306,31 +302,37 @@ impl MonotonicXY {
         .unwrap();
     }
 
-    /// Removes a range of data
-    /// ### Panics
-    /// - When a boundary is higher than the largest x value in the data
-    /// - When the boundaries are approximately equal
-    pub fn mask(&mut self, lower_x: f64, upper_x: f64) {
-        if (upper_x - lower_x).abs() <= 2.0 * self.dx() {
-            panic!("Trim boundaries are equal");
-        }
-
-        let lower = if (self.left_x() - lower_x).abs() <= 2.0 * self.dx() {
+    fn robust_x_to_idx(&self, lower_x: f64, upper_x: f64) -> (usize, usize) {
+        let lower = if lower_x <= self.left_x() {
             0
+        } else if lower_x >= self.right_x() {
+            self.x.len() - 1
         } else {
             self.x
                 .iter()
                 .position(|&x| x >= lower_x)
-                .expect("mask left x is outside domain")
+                .unwrap_or(self.x.len() - 1)
         };
-        let upper = if (self.right_x() - upper_x).abs() <= 2.0 * self.dx() {
+
+        let upper = if upper_x <= self.left_x() {
+            0
+        } else if upper_x >= self.right_x() {
             self.x.len() - 1
         } else {
             self.x
                 .iter()
                 .position(|&x| x >= upper_x)
-                .expect("mask right x is outside domain")
+                .unwrap_or(self.x.len() - 1)
         };
+
+        (lower, upper)
+    }
+
+    /// Removes a range of data
+    /// ### Panics
+    /// - When the resulting dataset is empty
+    pub fn mask(&mut self, lower_x: f64, upper_x: f64) {
+        let (lower, upper) = self.robust_x_to_idx(lower_x, upper_x);
 
         let mut i = 0usize;
         self.x.retain(|_| {
@@ -345,34 +347,15 @@ impl MonotonicXY {
             i += 1;
             !remove
         });
+
+        assert!(!self.x.is_empty(), "Mask resulted in an empty domain");
     }
 
     /// Truncates the stored values to be inside or equal to the given boundaries
     /// ### Panics
-    /// - When a boundary is higher than the largest x value in the data
-    /// - When the boundaries are approximately equal
     /// - When the resulting dataset is empty
     pub fn trim(&mut self, lower_x: f64, upper_x: f64) {
-        if (upper_x - lower_x).abs() <= 2.0 * self.dx() {
-            panic!("Trim boundaries are equal");
-        }
-
-        let lower = if (self.left_x() - lower_x).abs() <= 2.0 * self.dx() {
-            0
-        } else {
-            self.x
-                .iter()
-                .position(|&x| x >= lower_x)
-                .expect("trim left x is outside domain")
-        };
-        let upper = if (self.right_x() - upper_x).abs() <= 2.0 * self.dx() {
-            self.x.len() - 1
-        } else {
-            self.x
-                .iter()
-                .position(|&x| x >= upper_x)
-                .expect("trim right x is outside domain")
-        };
+        let (lower, upper) = self.robust_x_to_idx(lower_x, upper_x);
 
         self.x.drain(0..lower);
         self.y.drain(0..lower);

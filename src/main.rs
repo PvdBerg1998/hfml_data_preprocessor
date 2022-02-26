@@ -43,7 +43,9 @@ use gsl_rust::interpolation::Derivative;
 use gsl_rust::stats;
 use itertools::Itertools;
 use log::*;
-use num_complex::Complex64;
+use num_complex::Complex;
+use num_traits::AsPrimitive;
+use num_traits::Float;
 use rayon::prelude::*;
 use serde::Serialize;
 use serde_json as json;
@@ -239,7 +241,7 @@ fn _main() -> Result<()> {
                     let (a, b) = (window[0], window[1]);
                     (b - a).abs()
                 })
-                .map(|dx| float_ord::FloatOrd(dx))
+                .map(float_ord::FloatOrd)
                 .collect::<Vec<_>>();
             dx.sort();
 
@@ -247,7 +249,7 @@ fn _main() -> Result<()> {
             // This is done to avoid using a spurious extremely small interval
             let median_dx = dx
                 .get(INTERP_MIN_DX_SAMPLES / 2)
-                .unwrap_or(dx.last().expect("empty dataset"))
+                .unwrap_or_else(|| dx.last().expect("empty dataset"))
                 .0;
 
             let n = (preprocessed.xy.domain_len() / median_dx).ceil() as u64;
@@ -444,12 +446,9 @@ fn _main() -> Result<()> {
         if use_cuda {
             #[cfg(feature = "cuda")]
             {
-                info!(
-                    "Computing batched FFTs on GPU '{}'",
-                    cufft::first_gpu_name()?
-                );
+                info!("Computing batched FFTs on GPU '{}'", cufft::gpu_name()?);
 
-                let gpu_memory_bytes = cufft::first_gpu_memory_bytes()?;
+                let gpu_memory_bytes = cufft::gpu_memory()?;
                 debug!("GPU has {} MB of RAM", gpu_memory_bytes / 10u64.pow(6));
 
                 // We need to peek at the first prepared FFT because the y length is nontrivial
@@ -464,7 +463,8 @@ fn _main() -> Result<()> {
                 };
 
                 // Check if we need to split the batches
-                // We conservatively do not allocate more than 1/4th of the available memory
+                // We conservatively do not allocate more than 1/4th of the available memory,
+                // as we expect to need around 3N floats + some workspace.
                 let gpu_memory_bytes = gpu_memory_bytes as usize / 4;
                 let single_fft_bytes = fft_len * std::mem::size_of::<f64>();
                 let ffts_per_batch = gpu_memory_bytes / single_fft_bytes;
@@ -488,21 +488,30 @@ fn _main() -> Result<()> {
                     .enumerate()
                 {
                     info!("Preparing FFT batch #{i}");
-                    let prepared = prepared.collect::<Result<Vec<_>>>()?;
-                    let subbatch = prepared
-                        .iter()
-                        .map(|prepared| prepared.y.as_slice())
+
+                    // Take some prepared FFTs and split them into settings and data
+                    let (prepared, data): (Vec<_>, Vec<_>) = prepared
+                        .collect::<Result<Vec<_>>>()?
+                        .into_iter()
+                        .map(|prepared| prepared.split_data())
+                        .unzip();
+
+                    // Convert data to a contiguous buffer of f32
+                    let subbatch = data
+                        .into_iter()
+                        .flatten()
+                        .map(|x| x as f32)
                         .collect::<Vec<_>>();
 
                     // Compute FFT on GPU
                     info!("Running GPU FFT batch #{i}");
-                    let fft = cufft::fft64_batch(&subbatch)?;
+                    let fft = cufft::fft32_batch_contiguous(&subbatch, ffts_per_batch)?;
 
                     info!("FFT postprocessing batch #{i}");
                     prepared
                         .into_par_iter()
                         .zip(fft)
-                        .map(|(prepared, fft)| prepared.finish(&fft))
+                        .map(|(prepared, fft)| prepared.finish(fft))
                         .collect::<Result<Vec<_>>>()?
                         .into_iter()
                         .for_each(|saves| {
@@ -517,15 +526,15 @@ fn _main() -> Result<()> {
             prepared_generator
                 .par_bridge()
                 .map(|prepared| {
-                    let mut prepared = prepared?;
+                    let (prepared, mut data) = prepared?.split_data();
 
                     let name = &prepared.settings.extract.name;
                     let src = prepared.settings.file.source.as_str();
 
                     debug!("Computing CPU FFT for '{src}':'{name}'");
-                    fft::fft64_packed(&mut prepared.y)?;
-                    let fft = fft::fft64_unpack(&prepared.y);
-                    let saves = prepared.finish(&fft)?;
+                    fft::fft64_packed(&mut data)?;
+                    let fft = fft::fft64_unpack(&data);
+                    let saves = prepared.finish(fft)?;
 
                     Ok(saves)
                 })
@@ -996,24 +1005,36 @@ impl Processed {
         }
 
         Ok(PreparedFft {
-            project,
-            settings,
-            fft_settings,
-            sweep_index,
-            x_label,
-            y_label,
-            n_data,
-            n_pad,
-            domain_left,
-            domain_right,
-            x,
+            inner: PreparedFftInner {
+                project,
+                settings,
+                fft_settings,
+                sweep_index,
+                x_label,
+                y_label,
+                n_data,
+                n_pad,
+                domain_left,
+                domain_right,
+                x,
+            },
             y,
         })
     }
 }
 
 impl PreparedFft {
-    fn finish(&self, fft: &[Complex64]) -> Result<Vec<SaveRecord>> {
+    fn split_data(self) -> (PreparedFftInner, Vec<f64>) {
+        let Self { inner, y } = self;
+        (inner, y)
+    }
+}
+
+impl PreparedFftInner {
+    fn finish<F: Float + AsPrimitive<f64>>(
+        self,
+        mut fft: Vec<Complex<F>>,
+    ) -> Result<Vec<SaveRecord>> {
         let Self {
             project,
             settings,
@@ -1026,7 +1047,6 @@ impl PreparedFft {
             domain_left,
             domain_right,
             x,
-            y: _,
         } = self;
         let name = &settings.extract.name;
         let src = settings.file.source.as_str();
@@ -1057,16 +1077,16 @@ impl PreparedFft {
         // Take absolute value and normalize
         // NB. Do this after truncation to save a huge amount of work
         trace!("Normalizing FFT by 1/{n_data}");
-        let normalisation = 1.0 / *n_data as f64;
-        let fft = fft[start_idx..end_idx]
-            .iter()
-            .map(|y| y.norm() * normalisation)
+        let normalisation = 1.0 / n_data as f64;
+        let fft = fft
+            .drain(start_idx..end_idx)
+            .map(|y| y.norm().as_() * normalisation)
             .collect::<Vec<_>>();
 
         // Output FFT
         debug!("Storing FFT for '{src}':'{name}'");
         saves.push(save(
-            project,
+            &project,
             name,
             &match fft_settings.sweep {
                 FftSweep::Full => "fft".to_owned(),
@@ -1120,6 +1140,12 @@ struct Processed {
 
 #[derive(Clone, Debug, PartialEq)]
 struct PreparedFft {
+    inner: PreparedFftInner,
+    y: Vec<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct PreparedFftInner {
     project: Project,
     settings: Arc<Settings>,
     fft_settings: Fft,
@@ -1131,7 +1157,6 @@ struct PreparedFft {
     domain_left: f64,
     domain_right: f64,
     x: Vec<f64>,
-    y: Vec<f64>,
 }
 
 #[must_use]
