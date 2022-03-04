@@ -16,11 +16,79 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+use crate::settings::Format;
+use crate::settings::Project;
+use anyhow::Context;
 use anyhow::Result;
 use plotters::prelude::*;
+use serde::Serialize;
+use serde_json as json;
 use std::fmt::Write as FmtWrite;
 use std::io::Write as IoWrite;
+use std::path::PathBuf;
 use std::{fs::File, path::Path};
+
+pub fn save(
+    project: &Project,
+    name: &str,
+    title: &str,
+    dst: &str,
+    x_label: &str,
+    y_label: &str,
+    plot: bool,
+    x: &[f64],
+    y: &[f64],
+    metadata: json::Value,
+) -> Result<SaveRecord> {
+    let project_title = &project.title;
+
+    let extra_dirs = match PathBuf::from(&dst).parent() {
+        Some(extra_dirs) => format!("/{}", extra_dirs.to_string_lossy()),
+        None => String::new(),
+    };
+
+    let _ = std::fs::create_dir_all(format!(
+        "output/{project_title}/{name}/{title}{}",
+        extra_dirs
+    ));
+
+    if plot {
+        store_plot(
+            x,
+            y,
+            title,
+            x_label,
+            y_label,
+            format!("output/{project_title}/{name}/{title}/{dst}.png"),
+        )
+        .context("Failed to generate plot")?;
+    }
+
+    match project.format {
+        Format::Csv => {
+            let csv_path = format!("output/{project_title}/{name}/{title}/{dst}.csv");
+            store_csv(x, y, &csv_path).context("Failed to store CSV")?;
+            Ok(SaveRecord {
+                format: project.format,
+                stage: title.to_owned(),
+                variable: name.to_owned(),
+                path: csv_path,
+                metadata,
+            })
+        }
+        Format::MessagePack => {
+            let msgpack_path = format!("output/{project_title}/{name}/{title}/{dst}.msg");
+            store_messagepack(x, y, &msgpack_path).context("Failed to store messagepack")?;
+            Ok(SaveRecord {
+                format: project.format,
+                stage: title.to_owned(),
+                variable: name.to_owned(),
+                path: msgpack_path,
+                metadata,
+            })
+        }
+    }
+}
 
 pub fn store_csv<P: AsRef<Path>>(x: &[f64], y: &[f64], path: P) -> Result<()> {
     assert_eq!(x.len(), y.len());
@@ -79,7 +147,7 @@ pub fn store_messagepack<P: AsRef<Path>>(x: &[f64], y: &[f64], path: P) -> Resul
     Ok(())
 }
 
-pub fn plot<P: AsRef<Path>>(
+pub fn store_plot<P: AsRef<Path>>(
     x: &[f64],
     y: &[f64],
     title: &str,
@@ -134,4 +202,14 @@ pub fn plot<P: AsRef<Path>>(
     root.present()?;
 
     Ok(())
+}
+
+#[must_use]
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct SaveRecord {
+    format: Format,
+    stage: String,
+    variable: String,
+    path: String,
+    metadata: json::Value,
 }

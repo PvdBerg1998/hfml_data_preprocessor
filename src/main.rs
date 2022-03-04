@@ -19,12 +19,14 @@
 
 mod data;
 mod output;
+mod processing;
 mod settings;
 
 mod built_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
 
+use crate::processing::*;
 use crate::settings::*;
 use anyhow::bail;
 use anyhow::ensure;
@@ -34,21 +36,13 @@ use clap::Parser;
 #[cfg(feature = "cuda")]
 use cufft_rust as cufft;
 use data::Data;
-use data::MonotonicXY;
-use data::XY;
 use gsl_rust::fft;
-use gsl_rust::interpolation::interpolate_monotonic;
-use gsl_rust::interpolation::Derivative;
 use gsl_rust::stats;
 use itertools::Itertools;
 use log::*;
-use num_complex::Complex;
-use num_traits::AsPrimitive;
-use num_traits::Float;
 use rayon::prelude::*;
-use serde::Serialize;
 use serde_json as json;
-use settings::{Settings, Template};
+use settings::Template;
 use simplelog::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -61,15 +55,6 @@ use std::{
 
 // The amount of dx samples we use to calculate the minimum dx of a dataset
 const INTERP_MIN_DX_SAMPLES: usize = 5;
-
-#[derive(Clone, Debug, PartialEq, Eq, Parser)]
-struct Args {
-    template: PathBuf,
-    #[clap(short, long, parse(from_occurrences))]
-    verbose: usize,
-    #[clap(short, long)]
-    quiet: bool,
-}
 
 fn main() {
     gsl_rust::disable_error_handler(); // We handle errors ourselves and this aborts the program.
@@ -255,7 +240,7 @@ fn _main() -> Result<()> {
 
             // Loop over x, compare neighbours, sort
             let mut dx = preprocessed
-                .xy
+                .xy()
                 .x()
                 .windows(2)
                 .map(|window| {
@@ -276,7 +261,7 @@ fn _main() -> Result<()> {
                 })
                 .0;
 
-            let n = (preprocessed.xy.domain_len() / median_dx).ceil() as u64;
+            let n = (preprocessed.xy().domain_len() / median_dx).ceil() as u64;
             (name.to_owned(), n)
         })
         .into_group_map();
@@ -335,8 +320,8 @@ fn _main() -> Result<()> {
             processed.into_iter().flat_map(move |processed| {
                 // Extract boundaries
                 let invert_x = processed.settings.preprocessing.invert_x;
-                let left = processed.xy.left_x();
-                let right = processed.xy.right_x();
+                let left = processed.xy().left_x();
+                let right = processed.xy().right_x();
 
                 // Left and right boundaries in units of x
                 let x_left = if invert_x { 1.0 / right } else { left };
@@ -578,662 +563,6 @@ fn _main() -> Result<()> {
     Ok(())
 }
 
-impl Settings {
-    fn prepare(self: Arc<Self>, data: &Data, project: Project) -> Result<Option<Prepared>> {
-        let settings = self;
-        let Extract { name, x, y } = &settings.extract;
-        let src = settings.file.source.as_str();
-
-        info!("Preparing file '{src}': dataset '{name}'");
-
-        // Check if the given names actually correspond to existing data columns
-        if !data.contains(x) {
-            warn!("specified x column '{x}' for dataset '{name}' does not exist in file '{src}'");
-            return Ok(None);
-        }
-        if !data.contains(y) {
-            warn!("specified y column '{y}' for dataset '{name}' does not exist in file '{src}'");
-            return Ok(None);
-        }
-
-        // Extract the columns
-        debug!("Extracting dataset '{name}' (x='{x}', y='{y}')");
-        let xy = match data.clone_xy(x, y) {
-            Some(xy) => xy,
-            None => {
-                bail!("Dataset '{name}' (x='{x}', y='{y}') has less than 2 values");
-            }
-        };
-
-        // Check for NaN and infinities
-        if !xy.is_finite() {
-            bail!("File '{src}':'{name}' contains non-finite values");
-        }
-
-        // Prepare labels
-        let x_label = x.to_owned();
-        let y_label = y.to_owned();
-
-        Ok(Some(Prepared {
-            project,
-            settings,
-            x_label,
-            y_label,
-            xy,
-        }))
-    }
-}
-
-impl Prepared {
-    fn preprocess(self) -> Result<(Preprocessed, Vec<SaveRecord>)> {
-        let Self {
-            project,
-            settings,
-            x_label,
-            y_label,
-            xy,
-        } = self;
-
-        let Extract { name, x, y: _ } = &settings.extract;
-        let src = settings.file.source.as_str();
-
-        info!("Preprocessing file '{src}': dataset '{name}'");
-        let mut saves = vec![];
-
-        let n_log2 = (xy.len() as f64).log2();
-        trace!("Dataset '{src}':'{name}' length: ~2^{n_log2:.2}");
-
-        // Monotonicity
-        trace!("Making '{src}':'{name}' monotonic");
-        let mut xy = xy.into_monotonic();
-
-        // Output raw data
-        trace!("Storing raw data for '{src}':'{name}'");
-        saves.push(
-            save(
-                &project,
-                name,
-                "raw",
-                &settings.file.dest,
-                &x_label,
-                &y_label,
-                project.plot,
-                xy.x(),
-                xy.y(),
-                json::json!({
-                    "tags": settings.file.metadata,
-                }),
-            )
-            .with_context(|| format!("Failed to store raw data for '{src}':'{name}'"))?,
-        );
-
-        // Impulse filtering
-        // Do this before trimming, such that edge artifacts may be cut off afterwards
-        if settings.preprocessing.impulse_filter > 0 {
-            let width = settings.preprocessing.impulse_filter;
-            let tuning = settings.preprocessing.impulse_tuning;
-            trace!(
-                "Applying impulse filter of width {width} and tuning {tuning} to '{src}':'{name}'"
-            );
-            xy.impulse_filter(width as usize, tuning);
-        }
-
-        // Masking
-        for &Mask { left, right } in &settings.preprocessing.masks {
-            ensure!(
-                left >= xy.left_x(),
-                "Mask {left} is outside domain {:?} for '{src}':'{name}'",
-                xy.left_x()
-            );
-            ensure!(
-                right <= xy.right_x(),
-                "Mask {right} is outside domain {:?} for '{src}':'{name}'",
-                xy.right_x()
-            );
-
-            trace!("Masking '{src}':'{name}' from {} to {}", left, right);
-            xy.mask(left, right);
-        }
-
-        // Trimming
-        let mut trim_left = settings
-            .preprocessing
-            .trim_left
-            .unwrap_or_else(|| xy.left_x());
-        let mut trim_right = settings
-            .preprocessing
-            .trim_right
-            .unwrap_or_else(|| xy.right_x());
-        ensure!(
-            trim_left < trim_right,
-            "Trimmed domain is empty or negative"
-        );
-
-        // Automagically swap trim sign if needed to deal with negative x data
-        if xy.right_x() <= 0.0 && trim_right >= 0.0 {
-            trace!("Flipping trim domain around zero for '{src}':'{name}'");
-            std::mem::swap(&mut trim_left, &mut trim_right);
-            trim_left *= -1.0;
-            trim_right *= -1.0;
-        }
-
-        if settings.preprocessing.invert_x {
-            ensure!(
-                trim_left != 0.0,
-                "Can't trim to zero when inverting x for '{src}':'{name}'"
-            );
-            ensure!(
-                trim_right != 0.0,
-                "Can't trim to zero when inverting x for '{src}':'{name}'"
-            );
-        }
-
-        ensure!(
-            xy.left_x() <= trim_left,
-            "Left trim {trim_left} is outside domain {:?} for '{src}':'{name}'",
-            xy.left_x()
-        );
-        ensure!(
-            xy.right_x() >= trim_right,
-            "Right trim {trim_right} is outside domain {:?} for '{src}':'{name}'",
-            xy.right_x()
-        );
-        trace!("Desired data domain: [{trim_left},{trim_right}]");
-        xy.trim(trim_left, trim_right);
-        trace!("Actual data domain: [{},{}]", xy.left_x(), xy.right_x());
-
-        // Premultiplication
-        // Use local override prefactor if set
-        let mx = settings.preprocessing.prefactor_x;
-        let my = settings.preprocessing.prefactor_y;
-        if mx != 1.0 {
-            trace!("Multiplying '{src}':'{name}' x by {mx}");
-            xy.multiply_x(mx);
-        }
-        if my != 1.0 {
-            trace!("Multiplying '{src}':'{name}' y by {my}");
-            xy.multiply_y(my);
-        }
-
-        // Output preprocessed data
-        trace!("Storing preprocessed data for '{src}':'{name}'");
-        saves.push(
-            save(
-                &project,
-                name,
-                "preprocessed",
-                &settings.file.dest,
-                &x_label,
-                &y_label,
-                project.plot,
-                xy.x(),
-                xy.y(),
-                json::json!({
-                    "tags": settings.file.metadata,
-                    "settings": settings.preprocessing,
-                }),
-            )
-            .with_context(|| format!("Failed to store preprocessed data for '{src}':'{name}'"))?,
-        );
-
-        // 1/x
-        if settings.preprocessing.invert_x {
-            trace!("Inverting '{src}':'{name}' x");
-            xy.invert_x();
-
-            // Output inverted data
-            trace!("Storing inverted data for '{src}':'{name}'");
-            saves.push(
-                save(
-                    &project,
-                    name,
-                    "inverted",
-                    &settings.file.dest,
-                    &x_label,
-                    &y_label,
-                    false,
-                    xy.x(),
-                    xy.y(),
-                    json::json!({
-                        "tags": settings.file.metadata,
-                    }),
-                )
-                .with_context(|| format!("Failed to store inverted data for '{src}':'{name}'"))?,
-            );
-
-            trace!("Inverted data domain: [{},{}]", xy.left_x(), xy.right_x());
-        }
-
-        let x_label = if settings.preprocessing.invert_x {
-            format!("1/{x}")
-        } else {
-            x_label
-        };
-
-        Ok((
-            Preprocessed {
-                project,
-                settings,
-                x_label,
-                y_label,
-                xy,
-            },
-            saves,
-        ))
-    }
-}
-
-impl Preprocessed {
-    fn process(
-        self,
-        n_interp_global: Option<u64>,
-        n_interp_var: Option<u64>,
-    ) -> Result<(Processed, Vec<SaveRecord>)> {
-        let Self {
-            project,
-            settings,
-            x_label,
-            y_label,
-            xy,
-        } = self;
-        let name = &settings.extract.name;
-        let src = settings.file.source.as_str();
-
-        info!("Processing file '{src}': dataset '{name}'");
-        let mut saves = vec![];
-
-        // Interpolation
-        let (x, y) = match &settings.processing.interpolation {
-            Some(algorithm) => {
-                let n_interp = match algorithm.length() {
-                    InterpolationLength::MinimumPerVariable => {
-                        // Invariant: the interpolation length statistics routine will have returned Some
-                        n_interp_var.expect("should have calculated n_interp_var")
-                    }
-                    InterpolationLength::Minimum => {
-                        // Invariant: the interpolation length statistics routine will have returned Some
-                        n_interp_global.expect("should have calculated n_interp_global")
-                    }
-                    InterpolationLength::Amount(n) => n,
-                };
-
-                let deriv = match settings.processing.derivative {
-                    0 => Derivative::None,
-                    1 => Derivative::First,
-                    2 => Derivative::Second,
-                    _ => bail!("Only the 0th, 1st and 2nd derivative are supported"),
-                };
-                let deriv_str = match deriv {
-                    Derivative::None => "function",
-                    Derivative::First => "1st derivative",
-                    Derivative::Second => "2nd derivative",
-                };
-
-                debug!("Interpolating '{src}':'{name}' using {deriv_str} at {n_interp} points using {algorithm} interpolation");
-
-                let dx = xy.domain_len() / n_interp as f64;
-                let x_eval = (0..n_interp)
-                    .map(|i| (i as f64) * dx + xy.left_x())
-                    .collect::<Vec<_>>();
-                let y_eval =
-                    interpolate_monotonic((*algorithm).into(), deriv, xy.x(), xy.y(), &x_eval)
-                        .with_context(|| format!("Failed to make '{src}':'{name}' monotonic"))?;
-
-                // Output post interpolation data
-                trace!("Storing post-interpolation data for '{src}':'{name}'");
-                saves.push(
-                    save(
-                        &project,
-                        name,
-                        "post_interpolation",
-                        &settings.file.dest,
-                        &x_label,
-                        &y_label,
-                        false,
-                        &x_eval,
-                        &y_eval,
-                        json::json!({
-                            "tags": settings.file.metadata,
-                            "settings": settings.processing,
-                            "interpolation_n": n_interp
-                        }),
-                    )
-                    .with_context(|| {
-                        format!("Failed to store post-interpolated data for '{src}':'{name}'")
-                    })?,
-                );
-
-                (x_eval, y_eval)
-            }
-            None => xy.take_xy(),
-        };
-
-        let xy = MonotonicXY::new_unchecked(x, y);
-
-        Ok((
-            Processed {
-                project,
-                settings,
-                x_label,
-                y_label,
-                xy,
-            },
-            saves,
-        ))
-    }
-}
-
-impl Processed {
-    fn prepare_fft(
-        self,
-        fft_settings: Fft,
-        domain_left: f64,
-        domain_right: f64,
-        sweep_index: Option<usize>,
-    ) -> Result<PreparedFft> {
-        let Self {
-            project,
-            settings,
-            x_label,
-            y_label,
-            mut xy,
-        } = self;
-        let name = &settings.extract.name;
-        let src = settings.file.source.as_str();
-
-        let window_label = sweep_index
-            .map(|i| format!("window #{i}"))
-            .unwrap_or_else(|| "(full window)".to_owned());
-        debug!("Preparing file '{src}': dataset '{name}' for FFT {window_label}");
-
-        // Trim domain
-        // The domain is calculated internally so we may assume its boundaries are correct
-        trace!(
-            "Trimming '{src}':'{name}' for FFT {window_label} to [{domain_left}, {domain_right}]"
-        );
-        xy.trim(domain_left, domain_right);
-
-        // Extract requested total FFT length
-        let desired_n = fft_settings.zero_pad as usize;
-        let desired_n_log2 = (desired_n as f64).log2().floor() as usize;
-
-        // Amount of nonzero points
-        let n_data = xy.len();
-        // Amount of padded zero points
-        let n_pad = desired_n.saturating_sub(n_data);
-
-        // FFT preprocessing: centering, windowing, padding
-        if fft_settings.center {
-            let mean = stats::mean(xy.y());
-
-            trace!("Removing mean value {mean} from '{src}':'{name}'");
-            xy.y_mut().iter_mut().for_each(|y| {
-                *y -= mean;
-            });
-        }
-        if fft_settings.hann {
-            trace!("Applying Hann window to '{src}':'{name}'");
-            xy.y_mut().iter_mut().enumerate().for_each(|(i, y)| {
-                *y *= (i as f64 * std::f64::consts::PI / (n_data - 1) as f64)
-                    .sin()
-                    .powi(2);
-            });
-
-            // Avoid numerical error and leaking at the edges
-            // Invariant: x/y can not be empty
-            *xy.y_mut().first_mut().unwrap() = 0.0;
-            *xy.y_mut().last_mut().unwrap() = 0.0;
-        }
-
-        if n_pad > 0 {
-            trace!(
-                    "Zero padding '{src}':'{name}' by {n_pad} to reach 2^{desired_n_log2} points total length ({} MB)",
-                    desired_n * std::mem::size_of::<f64>() / 1024usize.pow(2)
-                );
-            xy.y_mut().resize(desired_n, 0.0);
-        } else {
-            ensure!(
-                xy.y().len().is_power_of_two(),
-                "Data length is larger than 2^{desired_n_log2}, so no padding can take place, but the length is not a power of two."
-            );
-        }
-
-        // Split x and y
-        let (x, y) = xy.take_xy();
-
-        Ok(PreparedFft {
-            inner: PreparedFftInner {
-                project,
-                settings,
-                fft_settings,
-                sweep_index,
-                x_label,
-                y_label,
-                n_data,
-                n_pad,
-                domain_left,
-                domain_right,
-                x,
-            },
-            y,
-        })
-    }
-}
-
-impl PreparedFft {
-    fn split_data(self) -> (PreparedFftInner, Vec<f64>) {
-        let Self { inner, y } = self;
-        (inner, y)
-    }
-}
-
-impl PreparedFftInner {
-    fn finish<F: Float + AsPrimitive<f64>>(
-        self,
-        mut fft: Vec<Complex<F>>,
-    ) -> Result<Vec<SaveRecord>> {
-        let Self {
-            project,
-            settings,
-            fft_settings,
-            sweep_index,
-            x_label: _,
-            y_label: _,
-            n_data,
-            n_pad,
-            domain_left,
-            domain_right,
-            x,
-        } = self;
-        let name = &settings.extract.name;
-        let src = settings.file.source.as_str();
-
-        debug!("FFT postprocessing file '{src}': dataset '{name}'");
-        let mut saves = vec![];
-
-        // Prepare frequency space cutoffs
-        let lower_cutoff = fft_settings.truncate_lower.unwrap_or(0.0);
-        let upper_cutoff = fft_settings.truncate_upper.unwrap_or(f64::INFINITY);
-        if lower_cutoff != 0.0 || upper_cutoff.is_finite() {
-            trace!("Truncating FFT to {lower_cutoff}..{upper_cutoff} 'Hz' for '{src}':'{name}'");
-        }
-
-        let n = n_data + n_pad;
-        let dt = x[1] - x[0];
-
-        let start_idx = ((lower_cutoff * dt * n as f64).ceil() as usize).min(fft.len());
-        let end_idx = ((upper_cutoff * dt * n as f64).ceil() as usize).min(fft.len());
-
-        // Sampled frequencies : k/(N dt)
-        // Note: this includes zero padding.
-        let freq_normalisation = 1.0 / (dt * n as f64);
-        let x = (start_idx..end_idx)
-            .map(|i| i as f64 * freq_normalisation)
-            .collect::<Vec<_>>();
-
-        // Take absolute value and normalize
-        // NB. Do this after truncation to save a huge amount of work
-        trace!("Normalizing FFT by 1/{n_data}");
-        let normalisation = 1.0 / n_data as f64;
-        let fft = fft
-            .drain(start_idx..end_idx)
-            .map(|y| y.norm().as_() * normalisation)
-            .collect::<Vec<_>>();
-
-        // Output FFT
-        debug!("Storing FFT for '{src}':'{name}'");
-        saves.push(
-            save(
-                &project,
-                name,
-                &match fft_settings.sweep {
-                    FftSweep::Full => "fft".to_owned(),
-                    FftSweep::Lower { .. } => format!("fft_sweep_lower_{}", sweep_index.unwrap()),
-                    FftSweep::Upper { .. } => format!("fft_sweep_upper_{}", sweep_index.unwrap()),
-                    FftSweep::Windows { .. } => {
-                        format!("fft_sweep_window_{}", sweep_index.unwrap())
-                    }
-                },
-                &settings.file.dest,
-                "Frequency",
-                "FFT Amplitude",
-                false,
-                &x,
-                &fft,
-                json::json!({
-                    "tags": settings.file.metadata,
-                    "fft_domain": (domain_left, domain_right),
-                    "settings": fft_settings,
-                }),
-            )
-            .with_context(|| format!("Failed to store FFT for '{src}':'{name}'"))?,
-        );
-
-        Ok(saves)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct Prepared {
-    project: Project,
-    settings: Arc<Settings>,
-    x_label: String,
-    y_label: String,
-    xy: XY,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct Preprocessed {
-    project: Project,
-    settings: Arc<Settings>,
-    x_label: String,
-    y_label: String,
-    xy: MonotonicXY,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct Processed {
-    project: Project,
-    settings: Arc<Settings>,
-    x_label: String,
-    y_label: String,
-    xy: MonotonicXY,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct PreparedFft {
-    inner: PreparedFftInner,
-    y: Vec<f64>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct PreparedFftInner {
-    project: Project,
-    settings: Arc<Settings>,
-    fft_settings: Fft,
-    sweep_index: Option<usize>,
-    x_label: String,
-    y_label: String,
-    n_data: usize,
-    n_pad: usize,
-    domain_left: f64,
-    domain_right: f64,
-    x: Vec<f64>,
-}
-
-#[must_use]
-#[derive(Clone, Debug, PartialEq, Serialize)]
-struct SaveRecord {
-    format: Format,
-    stage: String,
-    variable: String,
-    path: String,
-    metadata: json::Value,
-}
-
-fn save(
-    project: &Project,
-    name: &str,
-    title: &str,
-    dst: &str,
-    x_label: &str,
-    y_label: &str,
-    plot: bool,
-    x: &[f64],
-    y: &[f64],
-    metadata: json::Value,
-) -> Result<SaveRecord> {
-    let project_title = &project.title;
-
-    let extra_dirs = match PathBuf::from(&dst).parent() {
-        Some(extra_dirs) => format!("/{}", extra_dirs.to_string_lossy()),
-        None => String::new(),
-    };
-
-    let _ = std::fs::create_dir_all(format!(
-        "output/{project_title}/{name}/{title}{}",
-        extra_dirs
-    ));
-
-    if plot {
-        output::plot(
-            x,
-            y,
-            title,
-            x_label,
-            y_label,
-            format!("output/{project_title}/{name}/{title}/{dst}.png"),
-        )
-        .context("Failed to generate plot")?;
-    }
-
-    match project.format {
-        Format::Csv => {
-            let csv_path = format!("output/{project_title}/{name}/{title}/{dst}.csv");
-            output::store_csv(x, y, &csv_path).context("Failed to store CSV")?;
-            Ok(SaveRecord {
-                format: project.format,
-                stage: title.to_owned(),
-                variable: name.to_owned(),
-                path: csv_path,
-                metadata,
-            })
-        }
-        Format::MessagePack => {
-            let msgpack_path = format!("output/{project_title}/{name}/{title}/{dst}.msg");
-            output::store_messagepack(x, y, &msgpack_path)
-                .context("Failed to store messagepack")?;
-            Ok(SaveRecord {
-                format: project.format,
-                stage: title.to_owned(),
-                variable: name.to_owned(),
-                path: msgpack_path,
-                metadata,
-            })
-        }
-    }
-}
-
 pub fn has_dup<T: PartialEq>(slice: &[T]) -> bool {
     for i in 1..slice.len() {
         if slice[i..].contains(&slice[i - 1]) {
@@ -1241,4 +570,13 @@ pub fn has_dup<T: PartialEq>(slice: &[T]) -> bool {
         }
     }
     false
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Parser)]
+struct Args {
+    template: PathBuf,
+    #[clap(short, long, parse(from_occurrences))]
+    verbose: usize,
+    #[clap(short, long)]
+    quiet: bool,
 }
