@@ -223,11 +223,11 @@ truncate_upper = 10000
 # Zero padded data length.
 # Increasing this will result in a smoother spectrum with no data loss.
 # NB. This length _includes_ the original data.
+# This is required to be set because the FFTs should have a uniform length.
 #
 # Possible values:
 # - "n"     : direct zero padding amount. E.g. "1024". NB. This _must_ be a power of two.
 # - "2^n"   : same as "n" but a power of two.
-# - "min"   : minimum required to reach the nearest power of two.
 #
 # Recommended: near "2^20".
 zero_pad = "2^22"
@@ -282,8 +282,6 @@ temperature = "4.2K"
 [rename]
 "B(T)" = "B"
 "Field" = "B"
-"S1_Vxx_8_13_x" = "Vxx"
-"S1_Vxy_9_13_x" = "Vxy"
 "V_37_x" = "Vxy"
 "V_68_x" = "Vxx"
 

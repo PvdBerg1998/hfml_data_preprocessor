@@ -17,7 +17,6 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-//mod maxpol;
 mod data;
 mod output;
 mod settings;
@@ -27,9 +26,9 @@ mod built_info {
 }
 
 use crate::settings::*;
-use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::ensure;
+use anyhow::Context;
 use anyhow::Result;
 use clap::Parser;
 #[cfg(feature = "cuda")]
@@ -65,7 +64,7 @@ const INTERP_MIN_DX_SAMPLES: usize = 5;
 
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 struct Args {
-    template: Option<PathBuf>,
+    template: PathBuf,
     #[clap(short, long, parse(from_occurrences))]
     verbose: usize,
     #[clap(short, long)]
@@ -76,7 +75,7 @@ fn main() {
     gsl_rust::disable_error_handler(); // We handle errors ourselves and this aborts the program.
 
     if let Err(e) = _main() {
-        error!("{e}");
+        error!("{e:?}");
     }
 }
 
@@ -91,6 +90,7 @@ fn _main() -> Result<()> {
         .unwrap()
         .as_millis();
     let _ = std::fs::create_dir("log");
+
     let log_level = if args.quiet {
         LevelFilter::Warn
     } else {
@@ -100,6 +100,7 @@ fn _main() -> Result<()> {
             _ => LevelFilter::Trace,
         }
     };
+
     let log_path = format!("log/hfml_data_preprocessor_{unix}.log");
     CombinedLogger::init(vec![
         TermLogger::new(
@@ -121,9 +122,10 @@ fn _main() -> Result<()> {
                 .set_thread_level(LevelFilter::Error)
                 .set_location_level(LevelFilter::Off)
                 .build(),
-            File::create(&log_path)?,
+            File::create(&log_path).context("Failed to open log file")?,
         ),
-    ])?;
+    ])
+    .unwrap();
 
     let version = format!(
         "{} {}, built at {} for {} by {}",
@@ -140,11 +142,7 @@ fn _main() -> Result<()> {
     info!("Running hfml_data_preprocessor version {version}");
 
     // Parse template
-    let template = Template::load(
-        args.template
-            .unwrap_or_else(|| PathBuf::from("settings.toml")),
-    )
-    .map_err(|e| anyhow!("Failed to load template: {e}"))?;
+    let template = Template::load(args.template).context("Failed to load template")?;
 
     trace!("Template: {template:#?}");
     info!("Running project '{}'", template.project.title);
@@ -153,7 +151,12 @@ fn _main() -> Result<()> {
     rayon::ThreadPoolBuilder::new()
         .num_threads(if template.project.threading { 0 } else { 1 })
         .thread_name(|i| format!("worker {}", i + 1))
-        .build_global()?;
+        .build_global()
+        .context("Failed to start threadpool")?;
+
+    if template.files.is_empty() {
+        bail!("No files listed in template");
+    }
 
     // Load files
     let data = template
@@ -162,8 +165,11 @@ fn _main() -> Result<()> {
         .into_par_iter()
         .map(|file| {
             debug!("Loading file {}", file.source);
-            let s = std::fs::read_to_string(&file.source)?;
-            let mut data = s.parse::<Data>()?;
+            let s = std::fs::read_to_string(&file.source)
+                .context(format!("Failed to load file {}", file.source))?;
+            let mut data = s
+                .parse::<Data>()
+                .context(format!("Failed to parse file {}", file.source))?;
 
             // Rename columns
             trace!("Columns: {:#?}", data.columns());
@@ -173,7 +179,7 @@ fn _main() -> Result<()> {
                 }
                 ensure!(
                     !data.contains(to),
-                    "cannot rename {from} to existing column {to}"
+                    "Cannot rename {from} to existing column {to}"
                 );
 
                 trace!("Renaming column {from} to {to}");
@@ -183,7 +189,8 @@ fn _main() -> Result<()> {
 
             Ok((file.source, data))
         })
-        .collect::<Result<HashMap<_, _>>>()?;
+        .collect::<Result<HashMap<_, _>>>()
+        .context("Failed to load data files")?;
 
     let Template {
         project,
@@ -209,7 +216,8 @@ fn _main() -> Result<()> {
             settings.prepare(data, project.clone()).transpose()
         })
         .map(|prepared| prepared.and_then(|prepared| prepared.preprocess()))
-        .collect::<Result<Vec<_>>>()?
+        .collect::<Result<Vec<_>>>()
+        .context("Failed to preprocess data")?
         .into_iter()
         .map(|(preprocessed, saves)| {
             save_records.extend(saves);
@@ -228,8 +236,15 @@ fn _main() -> Result<()> {
         })
         .filter(
             // See filter above
-            |preprocessed| match preprocessed.settings.processing.interpolation_n.as_deref() {
-                Some(INTERP_OPTION_MIN_VAR) | Some(INTERP_OPTION_MIN) => true,
+            // Count only the ones participating in automatic dx interpolation
+            |preprocessed| match preprocessed
+                .settings
+                .processing
+                .interpolation
+                .map(|algorithm| algorithm.length())
+            {
+                Some(InterpolationLength::Minimum)
+                | Some(InterpolationLength::MinimumPerVariable) => true,
                 _ => false,
             },
         )
@@ -255,7 +270,10 @@ fn _main() -> Result<()> {
             // This is done to avoid using a spurious extremely small interval
             let median_dx = dx
                 .get(INTERP_MIN_DX_SAMPLES / 2)
-                .unwrap_or_else(|| dx.last().expect("empty dataset"))
+                .unwrap_or_else(|| {
+                    // Invariant: x/y have a length of >= 2 so at least 1 dx should exist
+                    dx.last().unwrap()
+                })
                 .0;
 
             let n = (preprocessed.xy.domain_len() / median_dx).ceil() as u64;
@@ -288,7 +306,8 @@ fn _main() -> Result<()> {
                 .copied();
             preprocessed.process(n_interp_global, n_interp_var)
         })
-        .collect::<Result<Vec<_>>>()?
+        .collect::<Result<Vec<_>>>()
+        .context("Failed to process data")?
         .into_iter()
         .map(|(processed, saves)| {
             save_records.extend(saves);
@@ -301,172 +320,141 @@ fn _main() -> Result<()> {
         // We go through all this trouble of creating a "generator" to reduce memory load
         // Multiple files with relatively large sweep lengths can quickly fill your RAM
         // NB. The intermediate generators must also be lazy so we use dynamically dispatched iterators
-        let fft_amount = processed.len() * fft.sweep_steps.unwrap_or(1);
-        let mut prepared_generator = {
+        // Currently this is single threaded because making it parallel is a pain due to rayon not being object safe
+
+        let fft_amount = processed.len()
+            * match fft.sweep {
+                FftSweep::Full => 1,
+                FftSweep::Lower { sweep_steps }
+                | FftSweep::Upper { sweep_steps }
+                | FftSweep::Windows { sweep_steps } => sweep_steps,
+            };
+
+        let prepared_generator = {
             let fft = fft.clone();
-            processed
-                .into_iter()
-                .flat_map(move |processed| {
-                    // Extract boundaries
-                    let invert_x = processed.settings.preprocessing.invert_x;
-                    let left = processed.xy.left_x();
-                    let right = processed.xy.right_x();
+            processed.into_iter().flat_map(move |processed| {
+                // Extract boundaries
+                let invert_x = processed.settings.preprocessing.invert_x;
+                let left = processed.xy.left_x();
+                let right = processed.xy.right_x();
 
-                    // Left and right boundaries in units of x
-                    let x_left = if invert_x { 1.0 / right } else { left };
-                    let x_right = if invert_x { 1.0 / left } else { right };
+                // Left and right boundaries in units of x
+                let x_left = if invert_x { 1.0 / right } else { left };
+                let x_right = if invert_x { 1.0 / left } else { right };
 
-                    type Iter = Box<dyn Iterator<Item = Result<PreparedFft>> + Send>;
+                type Iter = Box<dyn Iterator<Item = Result<PreparedFft>> + Send>;
 
-                    macro_rules! err {
-                        ($t:tt) => {
-                            Box::new(std::iter::once(Err(anyhow!($t)))) as Iter
-                        };
+                match fft.sweep {
+                    FftSweep::Full => {
+                        let iter =
+                            std::iter::once(processed.prepare_fft(fft.clone(), left, right, None));
+                        Box::new(iter) as Iter
                     }
+                    FftSweep::Lower { sweep_steps } => {
+                        // Sweep lower boundary while the upper boundary stays fixed
+                        // Sweep uniformly in x
+                        let dx = (x_right - x_left) / sweep_steps as f64;
 
-                    match fft.sweep {
-                        FftSweep::Full => {
-                            let iter = std::iter::once(processed.prepare_fft(
-                                fft.clone(),
-                                left,
-                                right,
-                                None,
-                            ));
-                            Box::new(iter) as Iter
-                        }
-                        FftSweep::Lower => {
-                            let steps = match fft.sweep_steps {
-                                Some(steps) => steps,
-                                None => return err!("FFT sweep steps not defined"),
-                            };
-                            if steps <= 1 {
-                                return err!("FFT sweep steps must be larger than 1");
-                            }
-
-                            // Sweep lower boundary while the upper boundary stays fixed
-                            // Sweep uniformly in x
-                            let dx = (x_right - x_left) / steps as f64;
-
-                            // Iterate left boundary down, starting 1 tick left from the right side
-                            let fft = fft.clone();
-                            let iter = (1..=steps)
-                                .map(move |i| {
-                                    let x_left = x_right - i as f64 * dx;
-                                    if invert_x {
-                                        (i, 1.0 / x_right, 1.0 / x_left)
-                                    } else {
-                                        (i, x_left, x_right)
-                                    }
-                                })
-                                .map(move |(i, left, right)| {
-                                    processed
-                                        .clone()
-                                        .prepare_fft(fft.clone(), left, right, Some(i))
-                                });
-                            Box::new(iter) as Iter
-                        }
-                        FftSweep::Upper => {
-                            let steps = match fft.sweep_steps {
-                                Some(steps) => steps,
-                                None => return err!("FFT sweep steps not defined"),
-                            };
-                            if steps <= 1 {
-                                return err!("FFT sweep steps must be larger than 1");
-                            }
-
-                            // Sweep upper boundary while the lower boundary stays fixed
-                            // Sweep uniformly in x
-                            let dx = (x_right - x_left) / steps as f64;
-
-                            // Iterate right boundary up, starting 1 tick right from the left side
-                            let fft = fft.clone();
-                            let iter = (1..=steps)
-                                .map(move |i| {
-                                    let x_right = x_left + i as f64 * dx;
-                                    if invert_x {
-                                        (i, 1.0 / x_right, 1.0 / x_left)
-                                    } else {
-                                        (i, x_left, x_right)
-                                    }
-                                })
-                                .map(move |(i, left, right)| {
-                                    processed
-                                        .clone()
-                                        .prepare_fft(fft.clone(), left, right, Some(i))
-                                });
-                            Box::new(iter) as Iter
-                        }
-                        FftSweep::Windows => {
-                            let steps = match fft.sweep_steps {
-                                Some(steps) => steps,
-                                None => return err!("FFT sweep steps not defined"),
-                            };
-                            if steps <= 1 {
-                                return err!("FFT sweep steps must be larger than 1");
-                            }
-
-                            // Sweep center of window
-                            // Use 50% overlap between the windows
-                            let dx = (right - left) / ((steps + 1) as f64);
-
-                            // Move the window along the domain
-                            let fft = fft.clone();
-                            let iter = (0..steps)
-                                .map(move |i| {
-                                    // NB. Careful with shadowing!
-                                    let right = left + (i + 2) as f64 * dx;
-                                    let left = left + i as f64 * dx;
-                                    (i, left, right)
-                                })
-                                .map(move |(i, left, right)| {
-                                    processed
-                                        .clone()
-                                        .prepare_fft(fft.clone(), left, right, Some(i))
-                                });
-                            Box::new(iter) as Iter
-                        }
+                        // Iterate left boundary down, starting 1 tick left from the right side
+                        let fft = fft.clone();
+                        let iter = (1..=sweep_steps)
+                            .map(move |i| {
+                                let x_left = x_right - i as f64 * dx;
+                                if invert_x {
+                                    (i, 1.0 / x_right, 1.0 / x_left)
+                                } else {
+                                    (i, x_left, x_right)
+                                }
+                            })
+                            .map(move |(i, left, right)| {
+                                processed
+                                    .clone()
+                                    .prepare_fft(fft.clone(), left, right, Some(i))
+                            });
+                        Box::new(iter) as Iter
                     }
-                })
-                .peekable()
+                    FftSweep::Upper { sweep_steps } => {
+                        // Sweep upper boundary while the lower boundary stays fixed
+                        // Sweep uniformly in x
+                        let dx = (x_right - x_left) / sweep_steps as f64;
+
+                        // Iterate right boundary up, starting 1 tick right from the left side
+                        let fft = fft.clone();
+                        let iter = (1..=sweep_steps)
+                            .map(move |i| {
+                                let x_right = x_left + i as f64 * dx;
+                                if invert_x {
+                                    (i, 1.0 / x_right, 1.0 / x_left)
+                                } else {
+                                    (i, x_left, x_right)
+                                }
+                            })
+                            .map(move |(i, left, right)| {
+                                processed
+                                    .clone()
+                                    .prepare_fft(fft.clone(), left, right, Some(i))
+                            });
+                        Box::new(iter) as Iter
+                    }
+                    FftSweep::Windows { sweep_steps } => {
+                        // Sweep center of window
+                        // Use 50% overlap between the windows
+                        let dx = (right - left) / ((sweep_steps + 1) as f64);
+
+                        // Move the window along the domain
+                        let fft = fft.clone();
+                        let iter = (0..sweep_steps)
+                            .map(move |i| {
+                                // NB. Careful with shadowing!
+                                let right = left + (i + 2) as f64 * dx;
+                                let left = left + i as f64 * dx;
+                                (i, left, right)
+                            })
+                            .map(move |(i, left, right)| {
+                                processed
+                                    .clone()
+                                    .prepare_fft(fft.clone(), left, right, Some(i))
+                            });
+                        Box::new(iter) as Iter
+                    }
+                }
+            })
         };
 
-        let use_cuda = if fft.cuda {
+        let use_cuda = {
             #[cfg(feature = "cuda")]
-            {
+            if fft.cuda {
                 if cufft::gpu_count() == 0 {
-                    warn!("No CUDA capable GPUs available, using CPU instead");
+                    warn!("No CUDA capable GPUs detected, using CPU instead");
                     false
                 } else {
                     true
                 }
-            }
-            #[cfg(not(feature = "cuda"))]
-            {
-                warn!("CUDA support was disabled during build");
+            } else {
                 false
             }
-        } else {
-            false
+
+            #[cfg(not(feature = "cuda"))]
+            {
+                warn!("Requested GPU FFT but CUDA support was disabled during build");
+                false
+            }
         };
 
         if use_cuda {
             #[cfg(feature = "cuda")]
             {
-                info!("Computing batched FFTs on GPU '{}'", cufft::gpu_name()?);
+                info!(
+                    "Computing batched FFTs on GPU '{}'",
+                    cufft::gpu_name().context("Failed to retrieve GPU name")?
+                );
 
-                let gpu_memory_bytes = cufft::gpu_memory()?;
+                let gpu_memory_bytes =
+                    cufft::gpu_memory().context("Failed to retrieve GPU memory")?;
                 debug!("GPU has {} MB of RAM", gpu_memory_bytes / 10u64.pow(6));
 
-                // We need to peek at the first prepared FFT because the y length is nontrivial
-                let fft_len = {
-                    match prepared_generator.peek().unwrap().as_ref() {
-                        Ok(prepared) => prepared.y.len(),
-                        Err(e) => {
-                            // anyhow errors cannot be cloned :(
-                            bail!("failed to find FFT length: {}", e.to_string());
-                        }
-                    }
-                };
+                // Get total FFT length
+                let fft_len = fft.zero_pad as usize;
 
                 // Check if we need to split the batches
                 // We conservatively do not allocate more than 1/4th of the available memory,
@@ -477,7 +465,7 @@ fn _main() -> Result<()> {
 
                 ensure!(
                     ffts_per_batch > 0,
-                    "the GPU does not have enough RAM for a single FFT"
+                    "The GPU does not have enough RAM for a single FFT"
                 );
 
                 let n_subbatches = (fft_amount as f64 / ffts_per_batch as f64).ceil() as usize;
@@ -497,7 +485,8 @@ fn _main() -> Result<()> {
 
                     // Take some prepared FFTs and split them into settings and data
                     let (prepared, data): (Vec<_>, Vec<_>) = prepared
-                        .collect::<Result<Vec<_>>>()?
+                        .collect::<Result<Vec<_>>>()
+                        .context("Failed to prepare FFT batch")?
                         .into_iter()
                         .map(|prepared| prepared.split_data())
                         .unzip();
@@ -514,40 +503,45 @@ fn _main() -> Result<()> {
 
                     // Compute FFT on GPU
                     info!("Running GPU FFT batch #{i}");
-                    let fft = cufft::fft32_batch_contiguous(&subbatch, ffts)?;
+                    let fft = cufft::fft32_batch_contiguous(&subbatch, ffts)
+                        .context("Failed to execute GPU FFT")?;
 
                     info!("FFT postprocessing batch #{i}");
                     prepared
                         .into_par_iter()
                         .zip(fft)
                         .map(|(prepared, fft)| prepared.finish(fft))
-                        .collect::<Result<Vec<_>>>()?
+                        .collect::<Result<Vec<_>>>()
+                        .context("Failed to postprocess FFT batch")?
                         .into_iter()
                         .for_each(|saves| {
                             save_records.extend(saves);
                         });
                 }
+
+                #[cfg(not(feature = "cuda"))]
+                unreachable!()
             }
-            #[cfg(not(feature = "cuda"))]
-            unreachable!();
         } else {
             info!("Computing FFTs on CPU");
             prepared_generator
                 .par_bridge()
                 .map(|prepared| {
-                    let (prepared, mut data) = prepared?.split_data();
+                    let (prepared, mut data) =
+                        prepared.context("Failed to prepare FFT")?.split_data();
 
                     let name = &prepared.settings.extract.name;
                     let src = prepared.settings.file.source.as_str();
 
                     debug!("Computing CPU FFT for '{src}':'{name}'");
-                    fft::fft64_packed(&mut data)?;
+                    fft::fft64_packed(&mut data).context("Failed to execute CPU FFT")?;
                     let fft = fft::fft64_unpack(&data);
-                    let saves = prepared.finish(fft)?;
+                    let saves = prepared.finish(fft).context("Failed to postprocess FFT")?;
 
                     Ok(saves)
                 })
-                .collect::<Result<Vec<_>>>()?
+                .collect::<Result<Vec<_>>>()
+                .context("Failed to compute FFTs on CPU")?
                 .into_iter()
                 .for_each(|saves| {
                     save_records.extend(saves);
@@ -575,11 +569,11 @@ fn _main() -> Result<()> {
         "settings": settings,
         "processed_files": files.into_iter().map(|file| file.source).collect::<Vec<_>>(),
     });
-    let sanitized_title = project.title.replace(' ', "_");
     std::fs::write(
-        format!("output/{}/metadata.json", sanitized_title),
+        format!("output/{}/metadata.json", project.title),
         &json::to_string_pretty(&metadata).expect("failed to generate metadata json"),
-    )?;
+    )
+    .context("Failed to store metadata json")?;
 
     Ok(())
 }
@@ -604,7 +598,12 @@ impl Settings {
 
         // Extract the columns
         debug!("Extracting dataset '{name}' (x='{x}', y='{y}')");
-        let xy = data.clone_xy(x, y);
+        let xy = match data.clone_xy(x, y) {
+            Some(xy) => xy,
+            None => {
+                bail!("Dataset '{name}' (x='{x}', y='{y}') has less than 2 values");
+            }
+        };
 
         // Check for NaN and infinities
         if !xy.is_finite() {
@@ -650,32 +649,29 @@ impl Prepared {
 
         // Output raw data
         trace!("Storing raw data for '{src}':'{name}'");
-        saves.push(save(
-            &project,
-            name,
-            "raw",
-            &settings.file.dest,
-            &x_label,
-            &y_label,
-            project.plot,
-            xy.x(),
-            xy.y(),
-            json::json!({
-                "tags": settings.file.metadata,
-            }),
-        )?);
+        saves.push(
+            save(
+                &project,
+                name,
+                "raw",
+                &settings.file.dest,
+                &x_label,
+                &y_label,
+                project.plot,
+                xy.x(),
+                xy.y(),
+                json::json!({
+                    "tags": settings.file.metadata,
+                }),
+            )
+            .with_context(|| format!("Failed to store raw data for '{src}':'{name}'"))?,
+        );
 
         // Impulse filtering
         // Do this before trimming, such that edge artifacts may be cut off afterwards
         if settings.preprocessing.impulse_filter > 0 {
             let width = settings.preprocessing.impulse_filter;
             let tuning = settings.preprocessing.impulse_tuning;
-
-            ensure!(
-                tuning >= 0.0,
-                "Impulse filter with negative tuning makes no sense"
-            );
-
             trace!(
                 "Applying impulse filter of width {width} and tuning {tuning} to '{src}':'{name}'"
             );
@@ -761,21 +757,24 @@ impl Prepared {
 
         // Output preprocessed data
         trace!("Storing preprocessed data for '{src}':'{name}'");
-        saves.push(save(
-            &project,
-            name,
-            "preprocessed",
-            &settings.file.dest,
-            &x_label,
-            &y_label,
-            project.plot,
-            xy.x(),
-            xy.y(),
-            json::json!({
-                "tags": settings.file.metadata,
-                "settings": settings.preprocessing,
-            }),
-        )?);
+        saves.push(
+            save(
+                &project,
+                name,
+                "preprocessed",
+                &settings.file.dest,
+                &x_label,
+                &y_label,
+                project.plot,
+                xy.x(),
+                xy.y(),
+                json::json!({
+                    "tags": settings.file.metadata,
+                    "settings": settings.preprocessing,
+                }),
+            )
+            .with_context(|| format!("Failed to store preprocessed data for '{src}':'{name}'"))?,
+        );
 
         // 1/x
         if settings.preprocessing.invert_x {
@@ -784,20 +783,23 @@ impl Prepared {
 
             // Output inverted data
             trace!("Storing inverted data for '{src}':'{name}'");
-            saves.push(save(
-                &project,
-                name,
-                "inverted",
-                &settings.file.dest,
-                &x_label,
-                &y_label,
-                false,
-                xy.x(),
-                xy.y(),
-                json::json!({
-                    "tags": settings.file.metadata,
-                }),
-            )?);
+            saves.push(
+                save(
+                    &project,
+                    name,
+                    "inverted",
+                    &settings.file.dest,
+                    &x_label,
+                    &y_label,
+                    false,
+                    xy.x(),
+                    xy.y(),
+                    json::json!({
+                        "tags": settings.file.metadata,
+                    }),
+                )
+                .with_context(|| format!("Failed to store inverted data for '{src}':'{name}'"))?,
+            );
 
             trace!("Inverted data domain: [{},{}]", xy.left_x(), xy.right_x());
         }
@@ -841,27 +843,18 @@ impl Preprocessed {
         let mut saves = vec![];
 
         // Interpolation
-        let (x, y) = match (
-            &settings.processing.interpolation,
-            &settings.processing.interpolation_n,
-        ) {
-            (Some(algorithm), Some(n)) => {
-                // Parse and process one of:
-                // - "n"
-                // - log2("2^n")
-                // - "minvar"
-                // - "min"
-                let n_interp = match n.as_str() {
-                    INTERP_OPTION_MIN_VAR => {
+        let (x, y) = match &settings.processing.interpolation {
+            Some(algorithm) => {
+                let n_interp = match algorithm.length() {
+                    InterpolationLength::MinimumPerVariable => {
+                        // Invariant: the interpolation length statistics routine will have returned Some
                         n_interp_var.expect("should have calculated n_interp_var")
                     }
-                    INTERP_OPTION_MIN => {
+                    InterpolationLength::Minimum => {
+                        // Invariant: the interpolation length statistics routine will have returned Some
                         n_interp_global.expect("should have calculated n_interp_global")
                     }
-                    n => match n.parse::<u64>() {
-                        Ok(n) => n,
-                        Err(_) => 2u64.pow(parse_log2(n)?),
-                    },
+                    InterpolationLength::Amount(n) => n,
                 };
 
                 let deriv = match settings.processing.derivative {
@@ -883,33 +876,36 @@ impl Preprocessed {
                     .map(|i| (i as f64) * dx + xy.left_x())
                     .collect::<Vec<_>>();
                 let y_eval =
-                    interpolate_monotonic((*algorithm).into(), deriv, xy.x(), xy.y(), &x_eval)?;
+                    interpolate_monotonic((*algorithm).into(), deriv, xy.x(), xy.y(), &x_eval)
+                        .with_context(|| format!("Failed to make '{src}':'{name}' monotonic"))?;
 
                 // Output post interpolation data
                 trace!("Storing post-interpolation data for '{src}':'{name}'");
-                saves.push(save(
-                    &project,
-                    name,
-                    "post interpolation",
-                    &settings.file.dest,
-                    &x_label,
-                    &y_label,
-                    false,
-                    &x_eval,
-                    &y_eval,
-                    json::json!({
-                        "tags": settings.file.metadata,
-                        "settings": settings.processing,
-                        "interpolation_n": n_interp
-                    }),
-                )?);
+                saves.push(
+                    save(
+                        &project,
+                        name,
+                        "post_interpolation",
+                        &settings.file.dest,
+                        &x_label,
+                        &y_label,
+                        false,
+                        &x_eval,
+                        &y_eval,
+                        json::json!({
+                            "tags": settings.file.metadata,
+                            "settings": settings.processing,
+                            "interpolation_n": n_interp
+                        }),
+                    )
+                    .with_context(|| {
+                        format!("Failed to store post-interpolated data for '{src}':'{name}'")
+                    })?,
+                );
 
                 (x_eval, y_eval)
             }
-            (Some(_), None) => {
-                bail!("Missing interpolation length specification");
-            }
-            (None, Some(_)) | (None, None) => xy.take_xy(),
+            None => xy.take_xy(),
         };
 
         let xy = MonotonicXY::new_unchecked(x, y);
@@ -957,47 +953,36 @@ impl Processed {
         );
         xy.trim(domain_left, domain_right);
 
-        let (x, mut y) = xy.take_xy();
-
-        // Parse and process one of:
-        // - "n"
-        // - log2("2^n")
-        // - "min": use minimum padding to make the length a power of 2
-        let desired_n_log2 = if fft_settings.zero_pad == "min" {
-            (y.len() as f64).log2().ceil() as u32
-        } else {
-            match fft_settings.zero_pad.parse::<u32>() {
-                Ok(n) => n,
-                Err(_) => parse_log2(&fft_settings.zero_pad)?,
-            }
-        };
-        let desired_n = 2usize.pow(desired_n_log2);
+        // Extract requested total FFT length
+        let desired_n = fft_settings.zero_pad as usize;
+        let desired_n_log2 = (desired_n as f64).log2().floor() as usize;
 
         // Amount of nonzero points
-        let n_data = y.len();
+        let n_data = xy.len();
         // Amount of padded zero points
         let n_pad = desired_n.saturating_sub(n_data);
 
         // FFT preprocessing: centering, windowing, padding
         if fft_settings.center {
-            let mean = stats::mean(&y);
+            let mean = stats::mean(xy.y());
 
             trace!("Removing mean value {mean} from '{src}':'{name}'");
-            y.iter_mut().for_each(|y| {
+            xy.y_mut().iter_mut().for_each(|y| {
                 *y -= mean;
             });
         }
         if fft_settings.hann {
             trace!("Applying Hann window to '{src}':'{name}'");
-            y.iter_mut().enumerate().for_each(|(i, y)| {
+            xy.y_mut().iter_mut().enumerate().for_each(|(i, y)| {
                 *y *= (i as f64 * std::f64::consts::PI / (n_data - 1) as f64)
                     .sin()
                     .powi(2);
             });
 
             // Avoid numerical error and leaking at the edges
-            *y.first_mut().expect("empty dataset") = 0.0;
-            *y.last_mut().expect("empty dataset") = 0.0;
+            // Invariant: x/y can not be empty
+            *xy.y_mut().first_mut().unwrap() = 0.0;
+            *xy.y_mut().last_mut().unwrap() = 0.0;
         }
 
         if n_pad > 0 {
@@ -1005,13 +990,16 @@ impl Processed {
                     "Zero padding '{src}':'{name}' by {n_pad} to reach 2^{desired_n_log2} points total length ({} MB)",
                     desired_n * std::mem::size_of::<f64>() / 1024usize.pow(2)
                 );
-            y.resize(desired_n, 0.0);
+            xy.y_mut().resize(desired_n, 0.0);
         } else {
             ensure!(
-                y.len().is_power_of_two(),
+                xy.y().len().is_power_of_two(),
                 "Data length is larger than 2^{desired_n_log2}, so no padding can take place, but the length is not a power of two."
             );
         }
+
+        // Split x and y
+        let (x, y) = xy.take_xy();
 
         Ok(PreparedFft {
             inner: PreparedFftInner {
@@ -1094,27 +1082,32 @@ impl PreparedFftInner {
 
         // Output FFT
         debug!("Storing FFT for '{src}':'{name}'");
-        saves.push(save(
-            &project,
-            name,
-            &match fft_settings.sweep {
-                FftSweep::Full => "fft".to_owned(),
-                FftSweep::Lower => format!("fft_sweep_lower_{}", sweep_index.unwrap()),
-                FftSweep::Upper => format!("fft_sweep_upper_{}", sweep_index.unwrap()),
-                FftSweep::Windows => format!("fft_sweep_window_{}", sweep_index.unwrap()),
-            },
-            &settings.file.dest,
-            "Frequency",
-            "FFT Amplitude",
-            false,
-            &x,
-            &fft,
-            json::json!({
-                "tags": settings.file.metadata,
-                "fft_domain": (domain_left, domain_right),
-                "settings": fft_settings,
-            }),
-        )?);
+        saves.push(
+            save(
+                &project,
+                name,
+                &match fft_settings.sweep {
+                    FftSweep::Full => "fft".to_owned(),
+                    FftSweep::Lower { .. } => format!("fft_sweep_lower_{}", sweep_index.unwrap()),
+                    FftSweep::Upper { .. } => format!("fft_sweep_upper_{}", sweep_index.unwrap()),
+                    FftSweep::Windows { .. } => {
+                        format!("fft_sweep_window_{}", sweep_index.unwrap())
+                    }
+                },
+                &settings.file.dest,
+                "Frequency",
+                "FFT Amplitude",
+                false,
+                &x,
+                &fft,
+                json::json!({
+                    "tags": settings.file.metadata,
+                    "fft_domain": (domain_left, domain_right),
+                    "settings": fft_settings,
+                }),
+            )
+            .with_context(|| format!("Failed to store FFT for '{src}':'{name}'"))?,
+        );
 
         Ok(saves)
     }
@@ -1190,21 +1183,16 @@ fn save(
     y: &[f64],
     metadata: json::Value,
 ) -> Result<SaveRecord> {
-    // todo: move this to settings parser and do it once
+    let project_title = &project.title;
 
-    let sanitized_project = project.title.replace(' ', "_");
-    let sanitized_name = name.replace(' ', "_");
-    let sanitized_title = title.replace(' ', "_");
-    let sanitized_dst = dst.replace(' ', "_");
-
-    let extra_dirs = match PathBuf::from(&sanitized_dst).parent() {
+    let extra_dirs = match PathBuf::from(&dst).parent() {
         Some(extra_dirs) => format!("/{}", extra_dirs.to_string_lossy()),
         None => String::new(),
     };
 
     let _ = std::fs::create_dir_all(format!(
-        "output/{sanitized_project}/{sanitized_name}/{sanitized_title}{}",
-        extra_dirs,
+        "output/{project_title}/{name}/{title}{}",
+        extra_dirs
     ));
 
     if plot {
@@ -1214,18 +1202,15 @@ fn save(
             title,
             x_label,
             y_label,
-            format!(
-                "output/{sanitized_project}/{sanitized_name}/{sanitized_title}/{sanitized_dst}.png"
-            ),
-        )?;
+            format!("output/{project_title}/{name}/{title}/{dst}.png"),
+        )
+        .context("Failed to generate plot")?;
     }
 
     match project.format {
         Format::Csv => {
-            let csv_path = format!(
-                "output/{sanitized_project}/{sanitized_name}/{sanitized_title}/{sanitized_dst}.csv"
-            );
-            output::store_csv(x, y, &csv_path)?;
+            let csv_path = format!("output/{project_title}/{name}/{title}/{dst}.csv");
+            output::store_csv(x, y, &csv_path).context("Failed to store CSV")?;
             Ok(SaveRecord {
                 format: project.format,
                 stage: title.to_owned(),
@@ -1235,10 +1220,9 @@ fn save(
             })
         }
         Format::MessagePack => {
-            let msgpack_path = format!(
-                "output/{sanitized_project}/{sanitized_name}/{sanitized_title}/{sanitized_dst}.msg"
-            );
-            output::store_messagepack(x, y, &msgpack_path)?;
+            let msgpack_path = format!("output/{project_title}/{name}/{title}/{dst}.msg");
+            output::store_messagepack(x, y, &msgpack_path)
+                .context("Failed to store messagepack")?;
             Ok(SaveRecord {
                 format: project.format,
                 stage: title.to_owned(),
@@ -1247,22 +1231,6 @@ fn save(
                 metadata,
             })
         }
-    }
-}
-
-/// Parses `log2("2^n")`.
-///
-/// Rounds up to the nearest power of 2.
-fn parse_log2(n: &str) -> Result<u32> {
-    if let Some(stripped) = n.strip_prefix("2^") {
-        match stripped.parse::<u32>() {
-            Ok(n_log2) => Ok(n_log2),
-            Err(_) => {
-                bail!("Invalid power of 2: {n}");
-            }
-        }
-    } else {
-        bail!("Invalid length: {n}");
     }
 }
 

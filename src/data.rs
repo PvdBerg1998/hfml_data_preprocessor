@@ -146,19 +146,20 @@ impl Data {
     }
 
     /// Clones an x/y data pair.
+    /// Returns None if the dataset is smaller than 2 values.
     /// ### Panics
     /// - When columns do not exist
     /// - When columns do not have the same length
     /// - When columns have less than 2 elements
-    pub fn clone_xy(&self, x: &str, y: &str) -> XY {
+    pub fn clone_xy(&self, x: &str, y: &str) -> Option<XY> {
         let x = self.data.get(x).expect("x column does not exist");
         let y = self.data.get(y).expect("y column does not exist");
         assert_eq!(x.len(), y.len(), "XY columns have a different length");
-        assert!(!x.is_empty(), "XY columns are empty");
-        assert!(x.len() >= 2, "XY columns have less than 2 elements");
-        XY {
-            x: x.clone(),
-            y: y.clone(),
+
+        if x.len() < 2 {
+            None
+        } else {
+            Some(XY::new(x.clone(), y.clone()))
         }
     }
 }
@@ -177,6 +178,12 @@ pub struct MonotonicXY {
 
 #[allow(dead_code)]
 impl XY {
+    pub fn new(x: Vec<f64>, y: Vec<f64>) -> Self {
+        assert!(x.len() >= 2);
+        assert!(y.len() >= 2);
+        Self { x, y }
+    }
+
     pub fn len(&self) -> usize {
         self.x.len()
     }
@@ -188,7 +195,8 @@ impl XY {
     pub fn into_monotonic(self) -> MonotonicXY {
         let XY { mut x, mut y } = self;
 
-        if *x.last().expect("empty dataset") < 0.0 {
+        // Invariant: x/y can not be empty
+        if *x.last().unwrap() < 0.0 {
             // Guess that the dataset is going to be flipped by sorting
             x.reverse();
             y.reverse();
@@ -199,7 +207,7 @@ impl XY {
         // Safe to unwrap as this only returns Err when the lengths are not equal
         let (x, y) = sorting::dedup_x_mean(&x, &y).unwrap();
 
-        MonotonicXY { x, y }
+        MonotonicXY::new_unchecked(x, y)
     }
 
     pub fn x(&self) -> &[f64] {
@@ -210,7 +218,7 @@ impl XY {
         &self.y
     }
 
-    pub fn y_mut(&mut self) -> &mut [f64] {
+    pub fn y_mut(&mut self) -> &mut Vec<f64> {
         &mut self.y
     }
 }
@@ -218,6 +226,8 @@ impl XY {
 #[allow(dead_code)]
 impl MonotonicXY {
     pub fn new_unchecked(x: Vec<f64>, y: Vec<f64>) -> Self {
+        assert!(x.len() >= 2);
+        assert!(y.len() >= 2);
         MonotonicXY { x, y }
     }
 
@@ -226,11 +236,13 @@ impl MonotonicXY {
     }
 
     pub fn left_x(&self) -> f64 {
-        *self.x.first().expect("empty dataset")
+        // Invariant: x/y can not be empty
+        *self.x.first().unwrap()
     }
 
     pub fn right_x(&self) -> f64 {
-        *self.x.last().expect("empty dataset")
+        // Invariant: x/y can not be empty
+        *self.x.last().unwrap()
     }
 
     pub fn x(&self) -> &[f64] {
@@ -241,7 +253,7 @@ impl MonotonicXY {
         &self.y
     }
 
-    pub fn y_mut(&mut self) -> &mut [f64] {
+    pub fn y_mut(&mut self) -> &mut Vec<f64> {
         &mut self.y
     }
 
