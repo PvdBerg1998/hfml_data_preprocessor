@@ -364,7 +364,9 @@ dependencies = [
 
 [[package]]
 name = "cufft_rust"
-version = "0.4.1"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcfefe58a762f77ac78fbe99f38ddb37022ae89e9b691149424520e7c4f3437e"
 dependencies = [
  "bindgen",
  "drop_guard",
@@ -565,7 +567,9 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "gsl_rust"
-version = "0.7.0"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3a8802f4b2fb8c8bc9094c3b2d07898306f2f0c3ce66ef7fd616bba6fed338a"
 dependencies = [
  "bindgen",
  "cmake",

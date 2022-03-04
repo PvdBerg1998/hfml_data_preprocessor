@@ -185,26 +185,6 @@ Note that Windows 10 and Windows 11 support an embedded Linux installation named
 
 On Linux, the installation location of the CUDA libraries is determined through `pkg-config`. If this fails, the location is guessed to be `/usr/local/cuda`. On Windows, the `CUDA_PATH` environment variable must be set to the folder containing both `lib` and `include`.
 
-## GSL wrapper
-
-Make sure the [`gsl_rust`](https://github.com/PvdBerg1998/gsl_rust) wrapper library is present in the folder containing this repository. Example structure:
-
-    GitHub/gsl_rust
-    GitHub/hfml_data_preprocessor
-
-The `gsl_rust` crate gets built automatically but requires you to initialize the `GSL` submodule through Git:
-
-```shell
-git clone git@github.com:PvdBerg1998/gsl_rust.git
-cd gsl_rust
-git submodule init
-git submodule update
-```
-
-## CUDA wrapper
-
-If compiling with CUDA support, also make sure the [`cufft_rust`](https://github.com/PvdBerg1998/cufft_rust) wrapper library is present in the same way. This one does not contain any submodules.
-
 ## Cargo
 
 If all is ready, the tool can then be compiled through Cargo, the build manager of Rust:

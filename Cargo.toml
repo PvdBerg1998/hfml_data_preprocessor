@@ -13,10 +13,10 @@ default = ["cuda"]
 anyhow = {version = "1.0.52", features = ["backtrace"]}
 num-traits = "0.2.14"
 clap = {version = "3.0", features = ["derive"]}
-cufft_rust = {version = "*", path = "../cufft_rust", optional = true}
+cufft_rust = {version = "0.4.2", optional = true}
 fast-float = "0.2.0"
 float-ord = "0.3.2"
-gsl_rust = {version = "*", path = "../gsl_rust"}
+gsl_rust = "0.7.1"
 itertools = "0.10.3"
 log = "0.4.14"
 num-complex = "0.4"
