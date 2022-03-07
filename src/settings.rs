@@ -558,7 +558,8 @@ pub struct Fft {
     pub hann: bool,
     pub truncate_lower: Option<f64>,
     pub truncate_upper: Option<f64>,
-    #[serde(default)]
+    // Not working? Weird interaction with tagged enum and custom deserializer
+    //#[serde(default)]
     #[serde(flatten)]
     #[serde(deserialize_with = "deserialize_fft_sweep")]
     pub sweep: FftSweep,
@@ -602,7 +603,17 @@ pub enum FftSweep {
 }
 
 fn deserialize_fft_sweep<'de, D: Deserializer<'de>>(de: D) -> Result<FftSweep, D::Error> {
-    let sweep = FftSweep::deserialize(de)?;
+    let sweep = match FftSweep::deserialize(de) {
+        Ok(sweep) => sweep,
+        Err(e) => {
+            // hack because we can't downcast serde errors
+            if e.to_string() == "missing field `sweep`" {
+                return Ok(FftSweep::default());
+            } else {
+                return Err(e);
+            }
+        }
+    };
 
     match sweep {
         FftSweep::Full => {}
@@ -644,17 +655,19 @@ fn deserialize_string_sanitized<'de, D: Deserializer<'de>>(de: D) -> Result<Stri
 
     // No weird characters allowed
     if !s.is_ascii() {
-        return Err(serde::de::Error::custom("String may only contain ASCII"));
+        return Err(serde::de::Error::custom(format!(
+            "String '{s}' may only contain ASCII"
+        )));
     }
 
     // Some simple conservative checks if we can use this as a filename
     if !s.chars().all(|c| {
         c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' || c == '/' || c == '\\'
-    }) || !s.chars().next().unwrap().is_ascii_alphabetic()
+    }) || !s.chars().next().unwrap().is_ascii_alphanumeric()
     {
-        return Err(serde::de::Error::custom(
-            "String must be fit for use as a filename",
-        ));
+        return Err(serde::de::Error::custom(format!(
+            "String '{s}' must be fit for use as a filename"
+        )));
     }
 
     // Check if there are no escape characters at the ends

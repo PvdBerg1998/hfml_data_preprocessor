@@ -213,3 +213,9 @@ pub struct SaveRecord {
     path: String,
     metadata: json::Value,
 }
+
+impl SaveRecord {
+    pub fn metadata(&self) -> &json::Value {
+        &self.metadata
+    }
+}

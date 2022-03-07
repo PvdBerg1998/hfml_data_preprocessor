@@ -181,7 +181,7 @@ fn _main() -> Result<()> {
         project,
         fft,
         settings,
-        files,
+        files: _,
         extract,
         rename: _,
     } = template;
@@ -192,7 +192,7 @@ fn _main() -> Result<()> {
 
     // Prepare and preprocess data in parallel
     let preprocessed = settings
-        .clone()
+        //.clone()
         .into_par_iter()
         .map(Arc::new)
         .filter_map(|settings| {
@@ -217,22 +217,15 @@ fn _main() -> Result<()> {
             // If we are not interpolating this data pair,
             // it shouldn't contribute to the stats.
             // It also saves time to skip this step if it's not required
-            preprocessed.settings.processing.interpolation.is_some()
+            if let Some(algorithm) = preprocessed.settings.processing.interpolation {
+                match algorithm.length() {
+                    InterpolationLength::Minimum | InterpolationLength::MinimumPerVariable => true,
+                    _ => false,
+                }
+            } else {
+                false
+            }
         })
-        .filter(
-            // See filter above
-            // Count only the ones participating in automatic dx interpolation
-            |preprocessed| match preprocessed
-                .settings
-                .processing
-                .interpolation
-                .map(|algorithm| algorithm.length())
-            {
-                Some(InterpolationLength::Minimum)
-                | Some(InterpolationLength::MinimumPerVariable) => true,
-                _ => false,
-            },
-        )
         .map(|preprocessed| {
             let name = &preprocessed.settings.extract.name;
             let src = preprocessed.settings.file.source.as_str();
@@ -407,21 +400,21 @@ fn _main() -> Result<()> {
         };
 
         let use_cuda = {
-            #[cfg(feature = "cuda")]
             if fft.cuda {
+                #[cfg(feature = "cuda")]
                 if cufft::gpu_count() == 0 {
                     warn!("No CUDA capable GPUs detected, using CPU instead");
                     false
                 } else {
                     true
                 }
-            } else {
-                false
-            }
 
-            #[cfg(not(feature = "cuda"))]
-            {
-                warn!("Requested GPU FFT but CUDA support was disabled during build");
+                #[cfg(not(feature = "cuda"))]
+                {
+                    warn!("Requested GPU FFT but CUDA support was disabled during build");
+                    false
+                }
+            } else {
                 false
             }
         };
@@ -536,23 +529,46 @@ fn _main() -> Result<()> {
 
     let end = Instant::now();
     let runtime_ms = (end - start).as_millis();
-    let runtime_sec = (end - start).as_secs_f64();
+    //let runtime_sec = (end - start).as_secs_f64();
     info!("Finished in {runtime_ms} ms");
 
     // Store metadata json for postprocessing convenience
     info!("Storing metadata json");
+
+    // Collect all unique tags
+    let unique_tags = save_records
+        .iter()
+        .filter_map(|record| record.metadata().as_object())
+        .filter_map(|map| map.get("tags"))
+        .filter_map(|tags| tags.as_object())
+        .flat_map(|tags| tags.iter())
+        .into_group_map()
+        .into_iter()
+        .map(|(k, values)| {
+            // We can't use Hash nor Ord so we have to resort to a slow elementwise PartialEq search
+            let mut unique = vec![];
+            for value in values {
+                if !unique.contains(&value) {
+                    unique.push(value);
+                }
+            }
+            (k, unique)
+        })
+        .collect::<HashMap<_, _>>();
+
     let metadata = json::json!({
         "version": version,
         "log": log_path,
-        "runtime_sec": runtime_sec,
+        //"runtime_sec": runtime_sec,
         "interpolation_stats": {
             "max_per_variable": max_n_per_var,
             "max": max_n
         },
         "variables": extract.into_iter().map(|extract| extract.name).collect::<Vec<_>>(),
+        "tags": unique_tags,
         "output": save_records,
-        "settings": settings,
-        "processed_files": files.into_iter().map(|file| file.source).collect::<Vec<_>>(),
+        //"settings": settings,
+        //"processed_files": files.into_iter().map(|file| file.source).collect::<Vec<_>>(),
     });
     std::fs::write(
         format!("output/{}/metadata.json", project.title),
