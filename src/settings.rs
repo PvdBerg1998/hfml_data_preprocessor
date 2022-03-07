@@ -660,16 +660,6 @@ fn deserialize_string_sanitized<'de, D: Deserializer<'de>>(de: D) -> Result<Stri
         )));
     }
 
-    // Some simple conservative checks if we can use this as a filename
-    if !s.chars().all(|c| {
-        c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' || c == '/' || c == '\\'
-    }) || !s.chars().next().unwrap().is_ascii_alphanumeric()
-    {
-        return Err(serde::de::Error::custom(format!(
-            "String '{s}' must be fit for use as a filename"
-        )));
-    }
-
     // Check if there are no escape characters at the ends
     if s.starts_with('.')
         || s.ends_with('.')
