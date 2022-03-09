@@ -37,6 +37,7 @@ use clap::Parser;
 use cufft_rust as cufft;
 use data::Data;
 use gsl_rust::fft;
+use gsl_rust::interpolation::Derivative;
 use gsl_rust::stats;
 use itertools::Itertools;
 use log::*;
@@ -196,6 +197,33 @@ fn _main() -> Result<()> {
         .into_par_iter()
         .map(Arc::new)
         .filter_map(|settings| {
+            // Warn about possibly invalid configurations
+            // Todo: add more
+
+            // X inversion without interpolation
+            if settings.processing.interpolation.is_none() && settings.preprocessing.invert_x {
+                warn!("Inverting x without interpolation will most likely result in wrong results");
+            }
+
+            // Derivative without interpolation
+            if settings.processing.interpolation.is_none()
+                && matches!(
+                    settings.processing.derivative,
+                    Derivative::First | Derivative::Second
+                )
+            {
+                warn!("Derivative will not be applied without interpolation");
+            }
+
+            // Linear interpolation with second derivative
+            if matches!(
+                settings.processing.interpolation,
+                Some(InterpolationAlgorithm::Linear { .. })
+            ) && matches!(settings.processing.derivative, Derivative::Second)
+            {
+                warn!("Second derivative using linear interpolation will result in zero");
+            }
+
             let data = &data[settings.file.source.as_str()];
             // None's are ignored: they correspond to missing columns which is treated as a soft error
             settings.prepare(data, project.clone()).transpose()
@@ -217,14 +245,10 @@ fn _main() -> Result<()> {
             // If we are not interpolating this data pair,
             // it shouldn't contribute to the stats.
             // It also saves time to skip this step if it's not required
-            if let Some(algorithm) = preprocessed.settings.processing.interpolation {
-                match algorithm.length() {
-                    InterpolationLength::Minimum | InterpolationLength::MinimumPerVariable => true,
-                    _ => false,
-                }
-            } else {
-                false
-            }
+            matches!(
+                preprocessed.settings.processing.interpolation_n,
+                InterpolationLength::Minimum | InterpolationLength::MinimumPerVariable
+            )
         })
         .map(|preprocessed| {
             let name = &preprocessed.settings.extract.name;
@@ -303,9 +327,7 @@ fn _main() -> Result<()> {
         let fft_amount = processed.len()
             * match fft.sweep {
                 FftSweep::Full => 1,
-                FftSweep::Lower { sweep_steps }
-                | FftSweep::Upper { sweep_steps }
-                | FftSweep::Windows { sweep_steps } => sweep_steps,
+                _ => fft.sweep_steps,
             };
 
         let prepared_generator = {
@@ -328,14 +350,14 @@ fn _main() -> Result<()> {
                             std::iter::once(processed.prepare_fft(fft.clone(), left, right, None));
                         Box::new(iter) as Iter
                     }
-                    FftSweep::Lower { sweep_steps } => {
+                    FftSweep::Lower => {
                         // Sweep lower boundary while the upper boundary stays fixed
                         // Sweep uniformly in x
-                        let dx = (x_right - x_left) / sweep_steps as f64;
+                        let dx = (x_right - x_left) / fft.sweep_steps as f64;
 
                         // Iterate left boundary down, starting 1 tick left from the right side
                         let fft = fft.clone();
-                        let iter = (1..=sweep_steps)
+                        let iter = (1..=fft.sweep_steps)
                             .map(move |i| {
                                 let x_left = x_right - i as f64 * dx;
                                 if invert_x {
@@ -351,14 +373,14 @@ fn _main() -> Result<()> {
                             });
                         Box::new(iter) as Iter
                     }
-                    FftSweep::Upper { sweep_steps } => {
+                    FftSweep::Upper => {
                         // Sweep upper boundary while the lower boundary stays fixed
                         // Sweep uniformly in x
-                        let dx = (x_right - x_left) / sweep_steps as f64;
+                        let dx = (x_right - x_left) / fft.sweep_steps as f64;
 
                         // Iterate right boundary up, starting 1 tick right from the left side
                         let fft = fft.clone();
-                        let iter = (1..=sweep_steps)
+                        let iter = (1..=fft.sweep_steps)
                             .map(move |i| {
                                 let x_right = x_left + i as f64 * dx;
                                 if invert_x {
@@ -374,14 +396,14 @@ fn _main() -> Result<()> {
                             });
                         Box::new(iter) as Iter
                     }
-                    FftSweep::Windows { sweep_steps } => {
+                    FftSweep::Windows => {
                         // Sweep center of window
                         // Use 50% overlap between the windows
-                        let dx = (right - left) / ((sweep_steps + 1) as f64);
+                        let dx = (right - left) / ((fft.sweep_steps + 1) as f64);
 
                         // Move the window along the domain
                         let fft = fft.clone();
-                        let iter = (0..sweep_steps)
+                        let iter = (0..fft.sweep_steps)
                             .map(move |i| {
                                 // NB. Careful with shadowing!
                                 let right = left + (i + 2) as f64 * dx;

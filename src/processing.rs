@@ -292,9 +292,9 @@ impl Preprocessed {
         let mut saves = vec![];
 
         // Interpolation
-        let (x, y) = match &settings.processing.interpolation {
+        let (x, y) = match settings.processing.interpolation {
             Some(algorithm) => {
-                let n_interp = match algorithm.length() {
+                let n_interp = match settings.processing.interpolation_n {
                     InterpolationLength::MinimumPerVariable => {
                         // Invariant: the interpolation length statistics routine will have returned Some
                         n_interp_var.expect("should have calculated n_interp_var")
@@ -306,12 +306,7 @@ impl Preprocessed {
                     InterpolationLength::Amount(n) => n,
                 };
 
-                let deriv = match settings.processing.derivative {
-                    0 => Derivative::None,
-                    1 => Derivative::First,
-                    2 => Derivative::Second,
-                    _ => bail!("Only the 0th, 1st and 2nd derivative are supported"),
-                };
+                let deriv = settings.processing.derivative;
                 let deriv_str = match deriv {
                     Derivative::None => "function",
                     Derivative::First => "1st derivative",
@@ -325,7 +320,7 @@ impl Preprocessed {
                     .map(|i| (i as f64) * dx + xy.left_x())
                     .collect::<Vec<_>>();
                 let y_eval =
-                    interpolate_monotonic((*algorithm).into(), deriv, xy.x(), xy.y(), &x_eval)
+                    interpolate_monotonic(algorithm.into(), deriv, xy.x(), xy.y(), &x_eval)
                         .with_context(|| format!("Failed to make '{src}':'{name}' monotonic"))?;
 
                 // Output post interpolation data

@@ -137,8 +137,7 @@ prefactor_x = -1
 # Default: no interpolation
 interpolation = "linear"
 
-# Interpolation amount
-# Required if interpolation is defined.
+# Optional: interpolation amount
 #
 # Possible values:
 # - "n"         : direct interpolation amount. E.g. "1000".
@@ -147,6 +146,7 @@ interpolation = "linear"
 # - "min"       : minimum x spacing of data, uniform for entire project
 #
 # Recommended: "min"
+# Default: "min"
 interpolation_n = "min"
 
 # Optional: derivative

@@ -202,7 +202,25 @@ impl XY {
             y.reverse();
         }
 
-        sorting::sort_xy(&mut x, &mut y);
+        // Guess that we have almost sorted data,
+        // so using insertion sort instead of heap sort is faster
+        //sorting::sort_xy(&mut x, &mut y);
+        pub fn insertion_sort<T>(x: &mut [T], y: &mut [T])
+        where
+            T: PartialOrd,
+        {
+            for i in 0..x.len() {
+                for j in (0..i).rev() {
+                    if x[j] >= x[j + 1] {
+                        x.swap(j, j + 1);
+                        y.swap(j, j + 1);
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        insertion_sort(&mut x, &mut y);
 
         // Safe to unwrap as this only returns Err when the lengths are not equal
         let (x, y) = sorting::dedup_x_mean(&x, &y).unwrap();

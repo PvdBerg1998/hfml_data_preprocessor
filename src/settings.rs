@@ -21,6 +21,8 @@ use anyhow::anyhow;
 use anyhow::ensure;
 use anyhow::Context;
 use anyhow::Result;
+use core::fmt;
+use gsl_rust::interpolation::Derivative;
 use itertools::Itertools;
 use serde::de::IntoDeserializer;
 use serde::Deserialize;
@@ -28,7 +30,6 @@ use serde::Deserializer;
 use serde::Serialize;
 use serde::Serializer;
 use std::collections::HashMap;
-use std::fmt;
 use std::path::Path;
 use toml::Value;
 
@@ -152,7 +153,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
             file: file.to_owned(),
             extract: extract.to_owned(),
             preprocessing: preprocessing_global.clone(),
-            processing: processing_global.clone(),
+            processing: processing_global,
         })
         .collect::<Vec<_>>();
 
@@ -340,9 +341,14 @@ fn update_processing<'a>(
                     .context("Failed to deserialize interpolation")?,
             );
         }
+        if let Some(interpolation_n) = specific.get("interpolation_n") {
+            settings.processing.interpolation_n =
+                <_ as Deserialize>::deserialize(interpolation_n.to_owned().into_deserializer())
+                    .context("Failed to deserialize interpolation_n")?;
+        }
         if let Some(derivative) = specific.get("derivative") {
             settings.processing.derivative =
-                <_ as Deserialize>::deserialize(derivative.to_owned().into_deserializer())
+                deserialize_derivative(derivative.to_owned().into_deserializer())
                     .context("Failed to deserialize derivative")?;
         }
     }
@@ -455,12 +461,63 @@ fn deserialize_impulse_tuning<'de, D: Deserializer<'de>>(de: D) -> Result<f64, D
     Ok(tuning)
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Processing {
-    #[serde(flatten)]
+    #[serde(default)]
     pub interpolation: Option<InterpolationAlgorithm>,
     #[serde(default)]
-    pub derivative: u32,
+    pub interpolation_n: InterpolationLength,
+    #[serde(serialize_with = "serialize_derivative")]
+    #[serde(deserialize_with = "deserialize_derivative")]
+    #[serde(default = "no_derivative")]
+    pub derivative: Derivative,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InterpolationAlgorithm {
+    Linear,
+    Steffen,
+}
+
+impl From<InterpolationAlgorithm> for gsl_rust::interpolation::Algorithm {
+    fn from(val: InterpolationAlgorithm) -> Self {
+        match val {
+            InterpolationAlgorithm::Linear { .. } => gsl_rust::interpolation::Algorithm::Linear,
+            InterpolationAlgorithm::Steffen { .. } => gsl_rust::interpolation::Algorithm::Steffen,
+        }
+    }
+}
+
+impl fmt::Display for InterpolationAlgorithm {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            InterpolationAlgorithm::Linear { .. } => write!(f, "linear"),
+            InterpolationAlgorithm::Steffen { .. } => write!(f, "Steffen spline"),
+        }
+    }
+}
+
+fn serialize_derivative<S: Serializer>(val: &Derivative, ser: S) -> Result<S::Ok, S::Error> {
+    match val {
+        Derivative::None => ser.serialize_u32(0),
+        Derivative::First => ser.serialize_u32(1),
+        Derivative::Second => ser.serialize_u32(2),
+    }
+}
+
+fn deserialize_derivative<'de, D: Deserializer<'de>>(de: D) -> Result<Derivative, D::Error> {
+    let n = u32::deserialize(de)?;
+    Ok(match n {
+        0 => Derivative::None,
+        1 => Derivative::First,
+        2 => Derivative::Second,
+        _ => {
+            return Err(serde::de::Error::custom(
+                "Only the 0th, 1st and 2nd derivative are supported",
+            ))
+        }
+    })
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -468,6 +525,12 @@ pub enum InterpolationLength {
     Amount(u64),
     MinimumPerVariable,
     Minimum,
+}
+
+impl Default for InterpolationLength {
+    fn default() -> Self {
+        InterpolationLength::Minimum
+    }
 }
 
 impl Serialize for InterpolationLength {
@@ -505,46 +568,6 @@ impl<'de> Deserialize<'de> for InterpolationLength {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-#[serde(tag = "interpolation", content = "interpolation_n")]
-pub enum InterpolationAlgorithm {
-    Linear {
-        interpolation_n: InterpolationLength,
-    },
-    Steffen {
-        interpolation_n: InterpolationLength,
-    },
-}
-
-impl InterpolationAlgorithm {
-    pub fn length(self) -> InterpolationLength {
-        match self {
-            InterpolationAlgorithm::Linear { interpolation_n } => interpolation_n,
-            InterpolationAlgorithm::Steffen { interpolation_n } => interpolation_n,
-        }
-    }
-}
-
-impl fmt::Display for InterpolationAlgorithm {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            InterpolationAlgorithm::Linear { .. } => write!(f, "linear"),
-            InterpolationAlgorithm::Steffen { .. } => write!(f, "Steffen spline"),
-        }
-    }
-}
-
-#[allow(clippy::from_over_into)]
-impl Into<gsl_rust::interpolation::Algorithm> for InterpolationAlgorithm {
-    fn into(self) -> gsl_rust::interpolation::Algorithm {
-        match self {
-            InterpolationAlgorithm::Linear { .. } => gsl_rust::interpolation::Algorithm::Linear,
-            InterpolationAlgorithm::Steffen { .. } => gsl_rust::interpolation::Algorithm::Steffen,
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Fft {
     #[serde(serialize_with = "serialize_zero_pad")]
@@ -558,11 +581,12 @@ pub struct Fft {
     pub hann: bool,
     pub truncate_lower: Option<f64>,
     pub truncate_upper: Option<f64>,
-    // Not working? Weird interaction with tagged enum and custom deserializer
-    //#[serde(default)]
-    #[serde(flatten)]
-    #[serde(deserialize_with = "deserialize_fft_sweep")]
+    #[serde(default)]
     pub sweep: FftSweep,
+    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_sweep_steps")]
+    // Invariant: > 1
+    pub sweep_steps: usize,
 }
 
 fn serialize_zero_pad<S: Serializer>(val: &u32, ser: S) -> Result<S::Ok, S::Error> {
@@ -583,52 +607,23 @@ fn deserialize_zero_pad<'de, D: Deserializer<'de>>(de: D) -> Result<u32, D::Erro
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-#[serde(tag = "sweep")]
-pub enum FftSweep {
-    Full,
-    Lower {
-        // Invariant: > 1
-        sweep_steps: usize,
-    },
-    Upper {
-        // Invariant: > 1
-        sweep_steps: usize,
-    },
-    Windows {
-        // Invariant: > 1
-        sweep_steps: usize,
-    },
+fn deserialize_sweep_steps<'de, D: Deserializer<'de>>(de: D) -> Result<usize, D::Error> {
+    let n = usize::deserialize(de)?;
+    if n <= 1 {
+        return Err(serde::de::Error::custom(
+            "Sweep steps must be larger than one",
+        ));
+    }
+    Ok(n)
 }
 
-fn deserialize_fft_sweep<'de, D: Deserializer<'de>>(de: D) -> Result<FftSweep, D::Error> {
-    let sweep = match FftSweep::deserialize(de) {
-        Ok(sweep) => sweep,
-        Err(e) => {
-            // hack because we can't downcast serde errors
-            if e.to_string() == "missing field `sweep`" {
-                return Ok(FftSweep::default());
-            } else {
-                return Err(e);
-            }
-        }
-    };
-
-    match sweep {
-        FftSweep::Full => {}
-        FftSweep::Lower { sweep_steps }
-        | FftSweep::Upper { sweep_steps }
-        | FftSweep::Windows { sweep_steps } => {
-            if sweep_steps <= 1 {
-                return Err(serde::de::Error::custom(
-                    "FFT sweep steps must be larger than 1",
-                ));
-            }
-        }
-    }
-
-    Ok(sweep)
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FftSweep {
+    Full,
+    Lower,
+    Upper,
+    Windows,
 }
 
 impl Default for FftSweep {
@@ -643,6 +638,10 @@ fn _true() -> bool {
 
 fn one() -> f64 {
     1.0
+}
+
+fn no_derivative() -> Derivative {
+    Derivative::None
 }
 
 fn deserialize_string_sanitized<'de, D: Deserializer<'de>>(de: D) -> Result<String, D::Error> {
