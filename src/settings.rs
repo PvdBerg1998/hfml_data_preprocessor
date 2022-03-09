@@ -21,7 +21,6 @@ use anyhow::anyhow;
 use anyhow::ensure;
 use anyhow::Context;
 use anyhow::Result;
-use core::fmt;
 use gsl_rust::interpolation::Derivative;
 use itertools::Itertools;
 use serde::de::IntoDeserializer;
@@ -30,6 +29,7 @@ use serde::Deserializer;
 use serde::Serialize;
 use serde::Serializer;
 use std::collections::HashMap;
+use std::fmt;
 use std::path::Path;
 use toml::Value;
 
