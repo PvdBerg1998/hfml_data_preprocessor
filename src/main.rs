@@ -26,7 +26,6 @@ mod built_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
 
-use crate::processing::*;
 use crate::settings::*;
 use anyhow::bail;
 use anyhow::ensure;
@@ -321,22 +320,15 @@ fn _main() -> Result<()> {
 
     // FFT
     if let Some(fft) = fft {
-        // We go through all this trouble of creating a "generator" to reduce memory load
-        // Multiple files with relatively large sweep lengths can quickly fill your RAM
-        // NB. The intermediate generators must also be lazy so we use dynamically dispatched iterators
-        // Currently this is single threaded because making it parallel is a pain due to rayon not being object safe
-
         let fft_amount = processed.len()
             * match fft.sweep {
                 FftSweep::Full => 1,
                 _ => fft.sweep_steps,
             };
 
-        // todo : no longer necessary
-        // evaluate into vec & rayon
-        let prepared_generator = {
-            let fft = fft.clone();
-            processed.into_iter().flat_map(move |processed| {
+        let prepared = processed
+            .into_par_iter()
+            .map(|processed| {
                 // Extract boundaries
                 let invert_x = processed.settings.preprocessing.invert_x;
                 let left = processed.xy().left_x();
@@ -346,23 +338,22 @@ fn _main() -> Result<()> {
                 let x_left = if invert_x { 1.0 / right } else { left };
                 let x_right = if invert_x { 1.0 / left } else { right };
 
-                type Iter = Box<dyn Iterator<Item = Result<PreparedFft>> + Send>;
-
                 match fft.sweep {
-                    FftSweep::Full => {
-                        let iter =
-                            std::iter::once(processed.prepare_fft(fft.clone(), left, right, None));
-                        Box::new(iter) as Iter
-                    }
+                    FftSweep::Full => Ok(vec![processed.prepare_fft(
+                        fft.clone(),
+                        left,
+                        right,
+                        None,
+                    )?]),
                     FftSweep::Lower => {
                         // Sweep lower boundary while the upper boundary stays fixed
                         // Sweep uniformly in x
                         let dx = (x_right - x_left) / fft.sweep_steps as f64;
 
                         // Iterate left boundary down, starting 1 tick left from the right side
-                        let fft = fft.clone();
-                        let iter = (1..=fft.sweep_steps)
-                            .map(move |i| {
+                        let prepared = (1..=fft.sweep_steps)
+                            .into_par_iter()
+                            .map(|i| {
                                 let x_left = x_right - i as f64 * dx;
                                 if invert_x {
                                     (i, 1.0 / x_right, 1.0 / x_left)
@@ -370,12 +361,13 @@ fn _main() -> Result<()> {
                                     (i, x_left, x_right)
                                 }
                             })
-                            .map(move |(i, left, right)| {
+                            .map(|(i, left, right)| {
                                 processed
                                     .clone()
                                     .prepare_fft(fft.clone(), left, right, Some(i))
-                            });
-                        Box::new(iter) as Iter
+                            })
+                            .collect::<Result<Vec<_>>>()?;
+                        Ok(prepared)
                     }
                     FftSweep::Upper => {
                         // Sweep upper boundary while the lower boundary stays fixed
@@ -383,9 +375,9 @@ fn _main() -> Result<()> {
                         let dx = (x_right - x_left) / fft.sweep_steps as f64;
 
                         // Iterate right boundary up, starting 1 tick right from the left side
-                        let fft = fft.clone();
-                        let iter = (1..=fft.sweep_steps)
-                            .map(move |i| {
+                        let prepared = (1..=fft.sweep_steps)
+                            .into_par_iter()
+                            .map(|i| {
                                 let x_right = x_left + i as f64 * dx;
                                 if invert_x {
                                     (i, 1.0 / x_right, 1.0 / x_left)
@@ -393,12 +385,13 @@ fn _main() -> Result<()> {
                                     (i, x_left, x_right)
                                 }
                             })
-                            .map(move |(i, left, right)| {
+                            .map(|(i, left, right)| {
                                 processed
                                     .clone()
                                     .prepare_fft(fft.clone(), left, right, Some(i))
-                            });
-                        Box::new(iter) as Iter
+                            })
+                            .collect::<Result<Vec<_>>>()?;
+                        Ok(prepared)
                     }
                     FftSweep::Windows => {
                         // Sweep center of window
@@ -406,24 +399,28 @@ fn _main() -> Result<()> {
                         let dx = (right - left) / ((fft.sweep_steps + 1) as f64);
 
                         // Move the window along the domain
-                        let fft = fft.clone();
-                        let iter = (0..fft.sweep_steps)
-                            .map(move |i| {
+                        let prepared = (0..fft.sweep_steps)
+                            .into_par_iter()
+                            .map(|i| {
                                 // NB. Careful with shadowing!
                                 let right = left + (i + 2) as f64 * dx;
                                 let left = left + i as f64 * dx;
                                 (i, left, right)
                             })
-                            .map(move |(i, left, right)| {
+                            .map(|(i, left, right)| {
                                 processed
                                     .clone()
                                     .prepare_fft(fft.clone(), left, right, Some(i))
-                            });
-                        Box::new(iter) as Iter
+                            })
+                            .collect::<Result<Vec<_>>>()?;
+                        Ok(prepared)
                     }
                 }
             })
-        };
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
 
         let use_cuda = {
             if args.disable_gpu {
@@ -480,9 +477,8 @@ fn _main() -> Result<()> {
                     fft_amount.min(ffts_per_batch) * single_fft_bytes / 10usize.pow(6)
                 );
 
-                // Now we only generate the required amount of FFTs,
-                // minimizing memory load.
-                for (i, prepared) in prepared_generator
+                for (i, prepared) in prepared
+                    .into_iter()
                     .chunks(ffts_per_batch)
                     .into_iter()
                     .enumerate()
@@ -490,9 +486,7 @@ fn _main() -> Result<()> {
                     info!("Preparing FFT batch #{i}");
 
                     // Evaluate a chunk of prepared FFTs
-                    let mut prepared = prepared
-                        .collect::<Result<Vec<_>>>()
-                        .context("Failed to prepare FFT batch")?;
+                    let mut prepared = prepared.collect::<Vec<_>>();
 
                     // Check if the data length is uniform
                     let data_uniform = prepared.iter().map(|prepared| prepared.len()).all_equal();
@@ -560,13 +554,15 @@ fn _main() -> Result<()> {
             }
         } else {
             info!("Computing FFTs on CPU");
-            prepared_generator
-                .par_bridge()
-                .map(|prepared| {
-                    let mut prepared = prepared.context("Failed to prepare FFT")?;
+            prepared
+                .into_par_iter()
+                .map(|mut prepared| {
+                    // Zero pad on CPU
                     prepared
                         .zero_pad()
                         .context("Failed to apply zero padding")?;
+
+                    // Split into settings and data
                     let (prepared, mut data) = prepared.split_data();
 
                     let name = &prepared.settings.extract.name;
