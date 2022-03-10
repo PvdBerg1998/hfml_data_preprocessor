@@ -79,7 +79,10 @@ impl FromStr for Data {
         for (i, &header) in headers.iter().enumerate() {
             let column = data
                 .iter()
-                .map(|line| line[i])
+                .map(|line| unsafe {
+                    // Safety: we checked for missing columns
+                    line.get_unchecked(i)
+                })
                 .map(|entry| fast_float::parse::<f64, _>(entry).map_err(|e| e.into()))
                 .collect::<Result<Vec<f64>>>()?;
             out.insert(String::from(header), column);

@@ -44,13 +44,12 @@ use rayon::prelude::*;
 use serde_json as json;
 use settings::Template;
 use simplelog::*;
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Instant;
 use std::{
+    collections::HashMap,
     fs::File,
-    time::{SystemTime, UNIX_EPOCH},
+    path::PathBuf,
+    sync::Arc,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 // The amount of dx samples we use to calculate the minimum dx of a dataset
@@ -65,7 +64,7 @@ fn main() {
 }
 
 fn _main() -> Result<()> {
-    let start = Instant::now();
+    let timestamp_start = Instant::now();
 
     let args = Args::parse();
 
@@ -136,7 +135,13 @@ fn _main() -> Result<()> {
 
     // Setup global thread pool
     rayon::ThreadPoolBuilder::new()
-        .num_threads(if template.project.threading { 0 } else { 1 })
+        .num_threads(if args.disable_threading {
+            1
+        } else if template.project.threading {
+            0
+        } else {
+            1
+        })
         .thread_name(|i| format!("worker {}", i + 1))
         .build_global()
         .context("Failed to start threadpool")?;
@@ -146,6 +151,8 @@ fn _main() -> Result<()> {
     }
 
     // Load files
+    info!("Loading files");
+    let timestamp_loading = Instant::now();
     let data = template
         .files
         .clone()
@@ -193,6 +200,8 @@ fn _main() -> Result<()> {
     let mut save_records = Vec::with_capacity(settings.len() * 5);
 
     // Prepare and preprocess data in parallel
+    info!("Preprocessing files");
+    let timestamp_preprocessing = Instant::now();
     let preprocessed = settings
         //.clone()
         .into_par_iter()
@@ -240,6 +249,7 @@ fn _main() -> Result<()> {
         .collect::<Vec<_>>();
 
     // Calculate minimum dx based interpolation amounts per variable per file
+    let timestamp_dx = Instant::now();
     let n_per_var = preprocessed
         .iter()
         .filter(|preprocessed| {
@@ -300,6 +310,8 @@ fn _main() -> Result<()> {
     info!("Global dx interpolation maximum: {max_n:?}");
 
     // Process data
+    info!("Processing files");
+    let timestamp_processing = Instant::now();
     let processed = preprocessed
         .into_par_iter()
         .map(|preprocessed| {
@@ -319,6 +331,7 @@ fn _main() -> Result<()> {
         .collect::<Vec<_>>();
 
     // FFT
+    let timestamp_fft = Instant::now();
     if let Some(fft) = fft {
         let fft_amount = processed.len()
             * match fft.sweep {
@@ -326,6 +339,7 @@ fn _main() -> Result<()> {
                 _ => fft.sweep_steps,
             };
 
+        info!("Preparing files for FFT");
         let prepared = processed
             .into_par_iter()
             .map(|processed| {
@@ -417,7 +431,8 @@ fn _main() -> Result<()> {
                     }
                 }
             })
-            .collect::<Result<Vec<_>>>()?
+            .collect::<Result<Vec<_>>>()
+            .context("Failed to prepare FFTs")?
             .into_iter()
             .flatten()
             .collect::<Vec<_>>();
@@ -463,7 +478,7 @@ fn _main() -> Result<()> {
                 // We conservatively do not allocate more than 1/4th of the available memory,
                 // as we expect to need around 3N floats + some workspace.
                 let gpu_memory_bytes = gpu_memory_bytes as usize / 4;
-                let single_fft_bytes = fft_len * std::mem::size_of::<f32>();
+                let single_fft_bytes = fft_len * std::mem::size_of::<f64>();
                 let ffts_per_batch = gpu_memory_bytes / single_fft_bytes;
 
                 ensure!(
@@ -486,34 +501,7 @@ fn _main() -> Result<()> {
                     info!("Preparing FFT batch #{i}");
 
                     // Evaluate a chunk of prepared FFTs
-                    let mut prepared = prepared.collect::<Vec<_>>();
-
-                    // Check if the data length is uniform
-                    let data_uniform = prepared.iter().map(|prepared| prepared.len()).all_equal();
-                    if !data_uniform {
-                        info!(
-                            "FFT batch #{i} is not uniform in length, performing CPU zero padding"
-                        );
-
-                        // GPU FFT only supports uniform data lengths,
-                        // so we have to try and make the batch uniform by padding on the CPU
-                        prepared = prepared
-                            .into_iter()
-                            .map(|mut prepared| {
-                                prepared.zero_pad()?;
-                                Ok(prepared)
-                            })
-                            .collect::<Result<Vec<_>>>()
-                            .context("Failed to apply zero padding")?;
-                    }
-
-                    let gpu_zero_padding = if data_uniform {
-                        trace!("FFT batch #{i} is uniform in length and will be zero padded on the GPU");
-                        // Invariant: chunk cannot be empty
-                        prepared.first().as_ref().unwrap().zero_pad_amount()
-                    } else {
-                        0
-                    };
+                    let prepared = prepared.collect::<Vec<_>>();
 
                     // Only transfer the least amount necessary
                     // Invariant: chunk cannot be empty
@@ -533,7 +521,7 @@ fn _main() -> Result<()> {
                     // Compute FFT on GPU
                     info!("Running GPU FFT batch #{i}");
                     let data_refs = data.iter().map(|y| y.as_slice()).collect::<Vec<_>>();
-                    let fft = cufft::fft64_batch(&data_refs, gpu_zero_padding, Some(gpu_out_len))
+                    let fft = cufft::fft64_batch(&data_refs, fft_len, Some(gpu_out_len))
                         .context("Failed to execute GPU FFT")?;
 
                     info!("FFT postprocessing batch #{i}");
@@ -584,10 +572,25 @@ fn _main() -> Result<()> {
         };
     }
 
-    let end = Instant::now();
-    let runtime_ms = (end - start).as_millis();
+    let timestamp_end = Instant::now();
+    let runtime_ms = (timestamp_end - timestamp_start).as_millis();
     //let runtime_sec = (end - start).as_secs_f64();
     info!("Finished in {runtime_ms} ms");
+
+    // Calculate time spent in each part
+    let dt_loading_ms = (timestamp_preprocessing - timestamp_loading).as_millis();
+    let dt_preprocessing_ms = (timestamp_dx - timestamp_preprocessing).as_millis();
+    let dt_dx_ms = (timestamp_processing - timestamp_dx).as_millis();
+    let dt_processing_ms = (timestamp_fft - timestamp_processing).as_millis();
+    let dt_fft_ms = (timestamp_end - timestamp_fft).as_millis();
+    debug!(
+        "Time division:
+    Loading: {dt_loading_ms} ms
+    Preprocessing: {dt_preprocessing_ms} ms
+    Interpolation statistics: {dt_dx_ms} ms
+    Processing: {dt_processing_ms} ms
+    FFT: {dt_fft_ms} ms"
+    );
 
     // Store metadata json for postprocessing convenience
     info!("Storing metadata json");
@@ -629,7 +632,7 @@ fn _main() -> Result<()> {
     });
     std::fs::write(
         format!("output/{}/metadata.json", project.title),
-        &json::to_string_pretty(&metadata).expect("failed to generate metadata json"),
+        &json::to_string(&metadata).expect("failed to generate metadata json"),
     )
     .context("Failed to store metadata json")?;
 
@@ -654,4 +657,6 @@ struct Args {
     quiet: bool,
     #[clap(long)]
     disable_gpu: bool,
+    #[clap(long)]
+    disable_threading: bool,
 }

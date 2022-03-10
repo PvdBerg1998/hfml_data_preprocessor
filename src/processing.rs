@@ -25,7 +25,7 @@ impl Settings {
         let Extract { name, x, y } = &settings.extract;
         let src = settings.file.source.as_str();
 
-        info!("Preparing file '{src}': dataset '{name}'");
+        debug!("Preparing file '{src}': dataset '{name}'");
 
         // Check if the given names actually correspond to existing data columns
         if !data.contains(x) {
@@ -82,7 +82,7 @@ impl Prepared {
         let Extract { name, x, y: _ } = &settings.extract;
         let src = settings.file.source.as_str();
 
-        info!("Preprocessing file '{src}': dataset '{name}'");
+        debug!("Preprocessing file '{src}': dataset '{name}'");
         let mut saves = vec![];
 
         let n_log2 = (xy.len() as f64).log2();
@@ -287,7 +287,7 @@ impl Preprocessed {
         let name = &settings.extract.name;
         let src = settings.file.source.as_str();
 
-        info!("Processing file '{src}': dataset '{name}'");
+        debug!("Processing file '{src}': dataset '{name}'");
         let mut saves = vec![];
 
         // Interpolation
@@ -509,14 +509,6 @@ impl PreparedFft {
         }
 
         Ok(())
-    }
-
-    pub fn zero_pad_amount(&self) -> usize {
-        self.inner.n_pad
-    }
-
-    pub fn len(&self) -> usize {
-        self.y.len()
     }
 
     pub fn minimum_fft_len(&self) -> usize {
