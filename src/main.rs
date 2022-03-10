@@ -332,6 +332,8 @@ fn _main() -> Result<()> {
                 _ => fft.sweep_steps,
             };
 
+        // todo : no longer necessary
+        // evaluate into vec & rayon
         let prepared_generator = {
             let fft = fft.clone();
             processed.into_iter().flat_map(move |processed| {
@@ -426,24 +428,22 @@ fn _main() -> Result<()> {
         let use_cuda = {
             if args.disable_gpu {
                 false
-            } else {
-                if fft.cuda {
-                    #[cfg(feature = "cuda")]
-                    if cufft::gpu_count() == 0 {
-                        warn!("No CUDA capable GPUs detected, using CPU instead");
-                        false
-                    } else {
-                        true
-                    }
-
-                    #[cfg(not(feature = "cuda"))]
-                    {
-                        warn!("Requested GPU FFT but CUDA support was disabled during build");
-                        false
-                    }
+            } else if fft.cuda {
+                #[cfg(feature = "cuda")]
+                if cufft::gpu_count() == 0 {
+                    warn!("No CUDA capable GPUs detected, using CPU instead");
+                    false
                 } else {
+                    true
+                }
+
+                #[cfg(not(feature = "cuda"))]
+                {
+                    warn!("Requested GPU FFT but CUDA support was disabled during build");
                     false
                 }
+            } else {
+                false
             }
         };
 
@@ -489,35 +489,57 @@ fn _main() -> Result<()> {
                 {
                     info!("Preparing FFT batch #{i}");
 
-                    // Zero padding happens on the GPU instead!
-                    // TODO
-
-                    // Take some prepared FFTs and split them into settings and data
-                    let (prepared, data): (Vec<_>, Vec<_>) = prepared
+                    // Evaluate a chunk of prepared FFTs
+                    let mut prepared = prepared
                         .collect::<Result<Vec<_>>>()
-                        .context("Failed to prepare FFT batch")?
+                        .context("Failed to prepare FFT batch")?;
+
+                    // Check if the data length is uniform
+                    let data_uniform = prepared.iter().map(|prepared| prepared.len()).all_equal();
+                    if !data_uniform {
+                        warn!(
+                            "FFT batch #{i} is not uniform in length, performing CPU zero padding"
+                        );
+
+                        // GPU FFT only supports uniform data lengths,
+                        // so we have to try and make the batch uniform by padding on the CPU
+                        prepared = prepared
+                            .into_iter()
+                            .map(|mut prepared| {
+                                prepared.zero_pad()?;
+                                Ok(prepared)
+                            })
+                            .collect::<Result<Vec<_>>>()
+                            .context("Failed to apply zero padding")?;
+                    }
+
+                    let gpu_zero_padding = if data_uniform {
+                        trace!("FFT batch #{i} is uniform in length and will be zero padded on the GPU");
+                        // Invariant: chunk cannot be empty
+                        prepared.first().as_ref().unwrap().zero_pad_amount()
+                    } else {
+                        0
+                    };
+
+                    // Only transfer the least amount necessary
+                    // Invariant: chunk cannot be empty
+                    let gpu_out_len = prepared
+                        .iter()
+                        .map(|prepared| prepared.minimum_fft_len())
+                        .max()
+                        .unwrap();
+                    trace!("FFT batch #{i} will transfer {gpu_out_len} complex values");
+
+                    // Split into settings and data
+                    let (prepared, data): (Vec<_>, Vec<_>) = prepared
                         .into_iter()
-                        .map(|mut prepared| {
-                            // todo : remove
-                            prepared.zero_pad().unwrap();
-                            prepared
-                        })
                         .map(|prepared| prepared.split_data())
                         .unzip();
 
-                    // Convert data to a contiguous buffer of f32
-                    let ffts = data.len(); // NB. Not necessarily equal to ffts_per_batch!
-                    let subbatch = data
-                        .into_iter()
-                        .flatten()
-                        .map(|x| x as f32)
-                        .collect::<Vec<_>>();
-
-                    assert_eq!(subbatch.len(), ffts * fft_len);
-
                     // Compute FFT on GPU
                     info!("Running GPU FFT batch #{i}");
-                    let fft = cufft::fft32_batch_contiguous(&subbatch, ffts)
+                    let data_refs = data.iter().map(|y| y.as_slice()).collect::<Vec<_>>();
+                    let fft = cufft::fft64_batch(&data_refs, gpu_zero_padding, Some(gpu_out_len))
                         .context("Failed to execute GPU FFT")?;
 
                     info!("FFT postprocessing batch #{i}");
@@ -542,8 +564,9 @@ fn _main() -> Result<()> {
                 .par_bridge()
                 .map(|prepared| {
                     let mut prepared = prepared.context("Failed to prepare FFT")?;
-                    // Zero padding in RAM is only required for CPU FFT
-                    prepared.zero_pad()?;
+                    prepared
+                        .zero_pad()
+                        .context("Failed to apply zero padding")?;
                     let (prepared, mut data) = prepared.split_data();
 
                     let name = &prepared.settings.extract.name;

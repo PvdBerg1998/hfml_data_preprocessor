@@ -42,7 +42,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
 
     let project = root
         .get("project")
-        .ok_or(anyhow!("Project settings missing"))?;
+        .ok_or_else(|| anyhow!("Project settings missing"))?;
     let project = <Project as Deserialize>::deserialize(project.to_owned().into_deserializer())
         .context("Failed to deserialize project section")?;
 
@@ -107,7 +107,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
                 let from = from.to_owned();
                 let to = to
                     .as_str()
-                    .ok_or(anyhow!("Rename entry invalid: expected string"))?
+                    .ok_or_else(|| anyhow!("Rename entry invalid: expected string"))?
                     .to_owned();
                 Ok(Rename { from, to })
             })
@@ -118,27 +118,27 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
 
     let extract = root.get("extract");
     let extract = extract
-        .ok_or(anyhow!("Extraction settings missing"))?
+        .ok_or_else(|| anyhow!("Extraction settings missing"))?
         .as_table()
-        .ok_or(anyhow!("Extraction settings invalid: expected table"))?;
+        .ok_or_else(|| anyhow!("Extraction settings invalid: expected table"))?;
     let extract = extract
         .iter()
         .map(|(name, value)| {
             let name = name.to_owned();
             let table = value
                 .as_table()
-                .ok_or(anyhow!("Extraction entry invalid: expected table"))?;
+                .ok_or_else(|| anyhow!("Extraction entry invalid: expected table"))?;
             let x = table
                 .get("x")
-                .ok_or(anyhow!("Extraction entry missing x"))?
+                .ok_or_else(|| anyhow!("Extraction entry missing x"))?
                 .as_str()
-                .ok_or(anyhow!("Extraction extry invalid: expected x as string"))?
+                .ok_or_else(|| anyhow!("Extraction extry invalid: expected x as string"))?
                 .to_owned();
             let y = table
                 .get("y")
-                .ok_or(anyhow!("Extraction entry missing y"))?
+                .ok_or_else(|| anyhow!("Extraction entry missing y"))?
                 .as_str()
-                .ok_or(anyhow!("Extraction extry invalid: expected y as string"))?
+                .ok_or_else(|| anyhow!("Extraction extry invalid: expected y as string"))?
                 .to_owned();
             Ok(Extract { name, x, y })
         })

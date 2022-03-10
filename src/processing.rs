@@ -225,6 +225,7 @@ impl Prepared {
         if settings.preprocessing.invert_x {
             trace!("Inverting '{src}':'{name}' x");
             xy.invert_x();
+            trace!("Inverted data domain: [{},{}]", xy.left_x(), xy.right_x());
 
             // Output inverted data
             trace!("Storing inverted data for '{src}':'{name}'");
@@ -245,8 +246,6 @@ impl Prepared {
                 )
                 .with_context(|| format!("Failed to store inverted data for '{src}':'{name}'"))?,
             );
-
-            trace!("Inverted data domain: [{},{}]", xy.left_x(), xy.right_x());
         }
 
         let x_label = if settings.preprocessing.invert_x {
@@ -510,6 +509,18 @@ impl PreparedFft {
         }
 
         Ok(())
+    }
+
+    pub fn zero_pad_amount(&self) -> usize {
+        self.inner.n_pad
+    }
+
+    pub fn len(&self) -> usize {
+        self.y.len()
+    }
+
+    pub fn minimum_fft_len(&self) -> usize {
+        self.inner.end_idx
     }
 
     pub fn split_data(self) -> (PreparedFftNoData, Vec<f64>) {
