@@ -20,10 +20,23 @@ This tool is meant to quickly extract, inspect, preprocess and Fourier transform
 - Linear interpolation and Steffen (monotonic) spline interpolation with automatic length detection and coordination to ensure uniformity in your dataset
 - First and second numerical derivative
 
+### Realistic performance running a full analysis
+For this measurement, I ran a full analysis on 5 samples measured in low field as well as one high field week. The dataset counts a total of 211 data files for a total of 170 MB of raw data. The test system was running Manjaro and consists of an Intel i5 6600K@4.4GHz, 16GB DDR4, GTX 1070, Samsung 980 Pro.
+
+```
+- 1 core   GPU disabled  : 44 sec (1.0x)
+- 4 cores  GPU disabled  : 27 sec (1.6x)
+- 1 core   GPU enabled   : 11 sec (4.0x)
+- 4 cores  GPU enabled   : 6 sec  (7.3x)
+```
+
+These numbers vary strongly depending on your analysis parameters. Especially for more extreme settings, multithreading and GPU FFT will provide larger benefits. Data output and intermediate plot generation is a major performance bottleneck. At debug logging level, performance measurements are displayed.
+
 ### Output
 - Data output at each intermediate step in either CSV or [MessagePack](https://msgpack.org/index.html) binary format
 - Quick 'n dirty plotting for manual inspection without external tools
 - Detailed metadata stored as JSON for easy scripted postprocessing
+- Full "trace-level" log files for debugging and manual checks
 
 MessagePack is recommended because it skips converting the floating point data back and forth to a base 10 representation. This saves processing power as well as potential accuracy loss. For usage in Python, I recommend [ormsgpack](https://pypi.org/project/ormsgpack/) to decode the data. An example is detailed further down.
 
