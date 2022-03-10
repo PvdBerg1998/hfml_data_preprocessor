@@ -491,7 +491,7 @@ fn _main() -> Result<()> {
                     // Check if the data length is uniform
                     let data_uniform = prepared.iter().map(|prepared| prepared.len()).all_equal();
                     if !data_uniform {
-                        warn!(
+                        info!(
                             "FFT batch #{i} is not uniform in length, performing CPU zero padding"
                         );
 
