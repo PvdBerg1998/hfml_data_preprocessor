@@ -572,28 +572,9 @@ fn _main() -> Result<()> {
         };
     }
 
-    let timestamp_end = Instant::now();
-    let runtime_ms = (timestamp_end - timestamp_start).as_millis();
-    //let runtime_sec = (end - start).as_secs_f64();
-    info!("Finished in {runtime_ms} ms");
-
-    // Calculate time spent in each part
-    let dt_loading_ms = (timestamp_preprocessing - timestamp_loading).as_millis();
-    let dt_preprocessing_ms = (timestamp_dx - timestamp_preprocessing).as_millis();
-    let dt_dx_ms = (timestamp_processing - timestamp_dx).as_millis();
-    let dt_processing_ms = (timestamp_fft - timestamp_processing).as_millis();
-    let dt_fft_ms = (timestamp_end - timestamp_fft).as_millis();
-    debug!(
-        "Time division:
-    Loading: {dt_loading_ms} ms
-    Preprocessing: {dt_preprocessing_ms} ms
-    Interpolation statistics: {dt_dx_ms} ms
-    Processing: {dt_processing_ms} ms
-    FFT: {dt_fft_ms} ms"
-    );
-
     // Store metadata json for postprocessing convenience
     info!("Storing metadata json");
+    let timestamp_metadata = Instant::now();
 
     // Collect all unique tags
     let unique_tags = save_records
@@ -619,7 +600,6 @@ fn _main() -> Result<()> {
     let metadata = json::json!({
         "version": version,
         "log": log_path,
-        //"runtime_sec": runtime_sec,
         "interpolation_stats": {
             "max_per_variable": max_n_per_var,
             "max": max_n
@@ -635,6 +615,26 @@ fn _main() -> Result<()> {
         &json::to_string(&metadata).expect("failed to generate metadata json"),
     )
     .context("Failed to store metadata json")?;
+
+    let timestamp_end = Instant::now();
+    let runtime_ms = (timestamp_end - timestamp_start).as_millis();
+
+    // Calculate time spent in each part
+    let dt_loading_ms = (timestamp_preprocessing - timestamp_loading).as_millis();
+    let dt_preprocessing_ms = (timestamp_dx - timestamp_preprocessing).as_millis();
+    let dt_dx_ms = (timestamp_processing - timestamp_dx).as_millis();
+    let dt_processing_ms = (timestamp_fft - timestamp_processing).as_millis();
+    let dt_fft_ms = (timestamp_metadata - timestamp_fft).as_millis();
+    let dt_metadata_ms = (timestamp_end - timestamp_metadata).as_millis();
+    info!(
+        "Finished in {runtime_ms} ms:
+    Loading: {dt_loading_ms} ms
+    Preprocessing: {dt_preprocessing_ms} ms
+    Interpolation statistics: {dt_dx_ms} ms
+    Processing: {dt_processing_ms} ms
+    FFT: {dt_fft_ms} ms
+    Metadata: {dt_metadata_ms} ms"
+    );
 
     Ok(())
 }

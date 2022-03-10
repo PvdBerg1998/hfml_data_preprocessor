@@ -1,5 +1,5 @@
 # HFML Data Preprocessor
-This tool is meant to quickly extract, inspect, preprocess and Fourier transform data generated at the HFML, Radboud University Nijmegen.
+This tool is meant to quickly extract, inspect, preprocess and Fourier transform data generated at the HFML, Radboud University Nijmegen. While designed for this specific purpose, the process is very general and can be adapted to other use cases.
 
 ## Buzzwords
 - State-of-the-art parsers and formatters ([some](https://arxiv.org/abs/2101.11408) [literature](https://dl.acm.org/doi/10.1145/3192366.3192369))
@@ -34,8 +34,15 @@ MessagePack is recommended because it skips converting the floating point data b
 - Frequency domain trimming
 - FTFT (Finite Time Fourier Transform), subdomain lower/upper/center uniform sweeping
 
-# Known issues
+If enabled, the FFT is accelerated using the first available NVIDIA GPU. For realistic datasets, the speedup is often around 5x.
+
+# Known limitations
 - Other filtering methods such as Savitzky-Golay are missing
+    - Most commonly required for visualisation, can easily be handled during post processing with e.g. SciPy.
+- No support for AMD GPU's
+    - Could be implemented via OpenCL or VkFFT
+- No check for wrong specialisation targets
+    - No method known to do this without writing a full TOML parser
 
 # Usage
 ### Settings format
@@ -46,6 +53,7 @@ The tool can be used by specifying required and optional settings via a copy of 
 - Per file, per variable
 
 The `Settings.toml` template contains documentation explaining all possible options and details.
+Note that while most settings are checked for validity, it is currently not feasible to check specialisation targets. This means that you should take care when changing your output destinations if you are using specialisations.
 
 ### Running
 The tool is compiled from source, unlike Python scripts. This allows for much better runtime performance and optimisations. If one has obtained a compatible compiled binary, usage is simple:
