@@ -191,13 +191,13 @@ Linux package managers make the compilation almost trivial and it is therefore r
 Ubuntu:
 
 ```shell
-sudo apt install build-essential cmake nvidia-cuda-toolkit pkg-config
+sudo apt install build-essential cmake libclang-dev nvidia-cuda-toolkit pkg-config
 ```
 
 Arch Linux:
 
 ```shell
-sudo pacman -S base-devel cmake cuda pkg-config
+sudo pacman -S base-devel cmake clang cuda pkg-config
 ```
 
 For Windows these steps must be done manually through provided installers. It is recommended to install the MSVC flavour of Rust tooling. This does NOT require a full installation of Visual Studio.
