@@ -21,7 +21,7 @@ This tool is meant to quickly extract, inspect, preprocess and Fourier transform
 - First and second numerical derivative
 
 ### Realistic performance running a full analysis
-For this measurement, I ran a full analysis on 5 samples measured in low field as well as one high field week. The dataset counts a total of 211 data files for a total of 170 MB of raw data. The test system was running Manjaro and consists of an Intel i5 6600K@4.4GHz, 16GB DDR4, GTX 1070, Samsung 980 Pro.
+For this measurement, I ran a full analysis on 5 samples measured in low field as well as one high field week. The dataset counts a total of 211 data files for a total of 170 MB of raw data. The test system was running Manjaro and consists of an Intel i5 6600K @ 4.4GHz, 16GB DDR4, GTX 1070, Samsung 980 Pro.
 
 ```
 - 1 core   GPU disabled  : 44 sec (1.0x)
