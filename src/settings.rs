@@ -572,7 +572,7 @@ impl<'de> Deserialize<'de> for InterpolationLength {
 pub struct Fft {
     #[serde(serialize_with = "serialize_zero_pad")]
     #[serde(deserialize_with = "deserialize_zero_pad")]
-    pub zero_pad: u32,
+    pub zero_pad: usize,
     #[serde(default = "_true")]
     pub cuda: bool,
     #[serde(default = "_true")]
@@ -589,21 +589,21 @@ pub struct Fft {
     pub sweep_steps: usize,
 }
 
-fn serialize_zero_pad<S: Serializer>(val: &u32, ser: S) -> Result<S::Ok, S::Error> {
+fn serialize_zero_pad<S: Serializer>(val: &usize, ser: S) -> Result<S::Ok, S::Error> {
     let n = *val;
     if n.is_power_of_two() {
-        let n_log2 = (n as f64).log2().floor() as u32;
+        let n_log2 = (n as f64).log2().floor() as usize;
         ser.serialize_str(&format!("2^{n_log2}"))
     } else {
-        ser.serialize_u32(n)
+        ser.serialize_u64(n as u64)
     }
 }
 
-fn deserialize_zero_pad<'de, D: Deserializer<'de>>(de: D) -> Result<u32, D::Error> {
+fn deserialize_zero_pad<'de, D: Deserializer<'de>>(de: D) -> Result<usize, D::Error> {
     let n = String::deserialize(de)?;
-    match n.parse::<u32>() {
+    match n.parse::<usize>() {
         Ok(n) => Ok(n),
-        Err(_) => Ok(2u32.pow(parse_log2(&n).map_err(serde::de::Error::custom)?)),
+        Err(_) => Ok(2usize.pow(parse_log2(&n).map_err(serde::de::Error::custom)?)),
     }
 }
 

@@ -96,6 +96,7 @@ fn _main() -> Result<()> {
                 .set_thread_mode(ThreadLogMode::Names)
                 .set_thread_level(LevelFilter::Error)
                 .set_location_level(LevelFilter::Off)
+                .set_target_level(LevelFilter::Off)
                 .build(),
             TerminalMode::Mixed,
             ColorChoice::Auto,
@@ -107,6 +108,7 @@ fn _main() -> Result<()> {
                 .set_thread_mode(ThreadLogMode::Names)
                 .set_thread_level(LevelFilter::Error)
                 .set_location_level(LevelFilter::Off)
+                .set_target_level(LevelFilter::Off)
                 .build(),
             File::create(&log_path).context("Failed to open log file")?,
         ),
@@ -422,22 +424,26 @@ fn _main() -> Result<()> {
         };
 
         let use_cuda = {
-            if fft.cuda {
-                #[cfg(feature = "cuda")]
-                if cufft::gpu_count() == 0 {
-                    warn!("No CUDA capable GPUs detected, using CPU instead");
-                    false
-                } else {
-                    true
-                }
-
-                #[cfg(not(feature = "cuda"))]
-                {
-                    warn!("Requested GPU FFT but CUDA support was disabled during build");
-                    false
-                }
-            } else {
+            if args.disable_gpu {
                 false
+            } else {
+                if fft.cuda {
+                    #[cfg(feature = "cuda")]
+                    if cufft::gpu_count() == 0 {
+                        warn!("No CUDA capable GPUs detected, using CPU instead");
+                        false
+                    } else {
+                        true
+                    }
+
+                    #[cfg(not(feature = "cuda"))]
+                    {
+                        warn!("Requested GPU FFT but CUDA support was disabled during build");
+                        false
+                    }
+                } else {
+                    false
+                }
             }
         };
 
@@ -454,7 +460,7 @@ fn _main() -> Result<()> {
                 debug!("GPU has {} MB of RAM", gpu_memory_bytes / 10u64.pow(6));
 
                 // Get total FFT length
-                let fft_len = fft.zero_pad as usize;
+                let fft_len = fft.zero_pad;
 
                 // Check if we need to split the batches
                 // We conservatively do not allocate more than 1/4th of the available memory,
@@ -483,11 +489,19 @@ fn _main() -> Result<()> {
                 {
                     info!("Preparing FFT batch #{i}");
 
+                    // Zero padding happens on the GPU instead!
+                    // TODO
+
                     // Take some prepared FFTs and split them into settings and data
                     let (prepared, data): (Vec<_>, Vec<_>) = prepared
                         .collect::<Result<Vec<_>>>()
                         .context("Failed to prepare FFT batch")?
                         .into_iter()
+                        .map(|mut prepared| {
+                            // todo : remove
+                            prepared.zero_pad().unwrap();
+                            prepared
+                        })
                         .map(|prepared| prepared.split_data())
                         .unzip();
 
@@ -527,8 +541,10 @@ fn _main() -> Result<()> {
             prepared_generator
                 .par_bridge()
                 .map(|prepared| {
-                    let (prepared, mut data) =
-                        prepared.context("Failed to prepare FFT")?.split_data();
+                    let mut prepared = prepared.context("Failed to prepare FFT")?;
+                    // Zero padding in RAM is only required for CPU FFT
+                    prepared.zero_pad()?;
+                    let (prepared, mut data) = prepared.split_data();
 
                     let name = &prepared.settings.extract.name;
                     let src = prepared.settings.file.source.as_str();
@@ -617,4 +633,6 @@ struct Args {
     verbose: usize,
     #[clap(short, long)]
     quiet: bool,
+    #[clap(long)]
+    disable_gpu: bool,
 }

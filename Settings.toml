@@ -32,7 +32,7 @@ plot = true
 #
 # Possible values:
 # - "csv"           : Decimal representation in CSV format
-# - "messagepack"   : MessagePack binary, containing two chained arrays: x and y.
+# - "messagepack"   : MessagePack binary, containing two chained arrays: x and y
 #
 # Recommended: "messagepack"
 # Default: "messagepack"

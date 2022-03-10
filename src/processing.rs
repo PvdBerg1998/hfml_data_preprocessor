@@ -401,16 +401,13 @@ impl Processed {
         );
         xy.trim(domain_left, domain_right);
 
-        // Extract requested total FFT length
-        let desired_n = fft_settings.zero_pad as usize;
-        let desired_n_log2 = (desired_n as f64).log2().floor() as usize;
-
         // Amount of nonzero points
         let n_data = xy.len();
+        // Extract requested total FFT length
+        let desired_n = fft_settings.zero_pad;
         // Amount of padded zero points
         let n_pad = desired_n.saturating_sub(n_data);
 
-        // FFT preprocessing: centering, windowing, padding
         if fft_settings.center {
             let mean = stats::mean(xy.y());
 
@@ -419,6 +416,7 @@ impl Processed {
                 *y -= mean;
             });
         }
+
         if fft_settings.hann {
             trace!("Applying Hann window to '{src}':'{name}'");
             xy.y_mut().iter_mut().enumerate().for_each(|(i, y)| {
@@ -433,21 +431,33 @@ impl Processed {
             *xy.y_mut().last_mut().unwrap() = 0.0;
         }
 
-        if n_pad > 0 {
-            trace!(
-                    "Zero padding '{src}':'{name}' by {n_pad} to reach 2^{desired_n_log2} points total length ({} MB)",
-                    desired_n * std::mem::size_of::<f64>() / 1024usize.pow(2)
-                );
-            xy.y_mut().resize(desired_n, 0.0);
-        } else {
-            ensure!(
-                xy.y().len().is_power_of_two(),
-                "Data length is larger than 2^{desired_n_log2}, so no padding can take place, but the length is not a power of two."
-            );
+        // Zero padding is delayed until manual application on PreparedFft
+        // Transferring the zeroes to the GPU is redundant, but required for CPU FFT
+
+        // Prepare frequency space cutoffs
+        let lower_cutoff = fft_settings.truncate_lower.unwrap_or(0.0);
+        let upper_cutoff = fft_settings.truncate_upper.unwrap_or(f64::INFINITY);
+        if lower_cutoff != 0.0 || upper_cutoff.is_finite() {
+            trace!("Truncating FFT to {lower_cutoff}..{upper_cutoff} 'Hz' for '{src}':'{name}'");
         }
 
-        // Split x and y
-        let (x, y) = xy.take_xy();
+        // Invariant: x has a length of >= 2
+        // Assume that the data is uniform (or interpolated)
+        let dt = xy.x()[1] - xy.x()[0];
+
+        // Calculate frequency space cutoff indices
+        // Note: this includes zero padding
+        let start_idx = (lower_cutoff * dt * desired_n as f64).ceil() as usize;
+        let end_idx = (upper_cutoff * dt * desired_n as f64).ceil() as usize;
+
+        // Sampled frequencies : k/(N dt)
+        let freq_normalisation = 1.0 / (dt * desired_n as f64);
+        let frequencies = (start_idx..end_idx)
+            .map(|i| i as f64 * freq_normalisation)
+            .collect::<Vec<_>>();
+
+        // Take y
+        let (_, y) = xy.take_xy();
 
         Ok(PreparedFft {
             inner: PreparedFftNoData {
@@ -461,7 +471,9 @@ impl Processed {
                 n_pad,
                 domain_left,
                 domain_right,
-                x,
+                start_idx,
+                end_idx,
+                frequencies,
             },
             y,
         })
@@ -469,6 +481,37 @@ impl Processed {
 }
 
 impl PreparedFft {
+    pub fn zero_pad(&mut self) -> Result<()> {
+        let Self {
+            inner:
+                PreparedFftNoData {
+                    settings,
+                    n_pad,
+                    fft_settings,
+                    ..
+                },
+            y,
+        } = self;
+        let name = &settings.extract.name;
+        let src = settings.file.source.as_str();
+
+        let desired_n = fft_settings.zero_pad;
+        let desired_n_log2 = (desired_n as f64).log2().floor() as usize;
+
+        if *n_pad > 0 {
+            assert!(y.len() != desired_n, "Tried to zero pad twice");
+            trace!("Zero padding '{src}':'{name}' by {n_pad} to reach 2^{desired_n_log2}");
+            y.resize(desired_n, 0.0);
+        } else {
+            ensure!(
+                y.len().is_power_of_two(),
+                "Data length is larger than 2^{desired_n_log2}, so no padding can take place, but the length is not a power of two."
+            );
+        }
+
+        Ok(())
+    }
+
     pub fn split_data(self) -> (PreparedFftNoData, Vec<f64>) {
         let Self { inner, y } = self;
         (inner, y)
@@ -478,6 +521,7 @@ impl PreparedFft {
 impl PreparedFftNoData {
     pub fn finish<F: Float + AsPrimitive<f64>>(
         self,
+        // May be cut off above end_idx (GPU optimisation)
         mut fft: Vec<Complex<F>>,
     ) -> Result<Vec<SaveRecord>> {
         let Self {
@@ -488,10 +532,12 @@ impl PreparedFftNoData {
             x_label: _,
             y_label: _,
             n_data,
-            n_pad,
+            n_pad: _,
             domain_left,
             domain_right,
-            x,
+            start_idx,
+            end_idx,
+            frequencies,
         } = self;
         let name = &settings.extract.name;
         let src = settings.file.source.as_str();
@@ -499,32 +545,28 @@ impl PreparedFftNoData {
         debug!("FFT postprocessing file '{src}': dataset '{name}'");
         let mut saves = vec![];
 
-        // Prepare frequency space cutoffs
-        let lower_cutoff = fft_settings.truncate_lower.unwrap_or(0.0);
-        let upper_cutoff = fft_settings.truncate_upper.unwrap_or(f64::INFINITY);
-        if lower_cutoff != 0.0 || upper_cutoff.is_finite() {
-            trace!("Truncating FFT to {lower_cutoff}..{upper_cutoff} 'Hz' for '{src}':'{name}'");
+        // Check truncation boundaries
+        if start_idx >= fft.len() {
+            // This is always invalid
+            bail!("FFT lower truncation is above Nyquist frequency");
         }
+        let end_idx = {
+            if end_idx > fft.len() {
+                warn!("FFT upper truncation is above Nyquist frequency");
+                fft.len()
+            } else {
+                end_idx
+            }
+        };
 
-        let n = n_data + n_pad;
-        let dt = x[1] - x[0];
-
-        let start_idx = ((lower_cutoff * dt * n as f64).ceil() as usize).min(fft.len());
-        let end_idx = ((upper_cutoff * dt * n as f64).ceil() as usize).min(fft.len());
-
-        // Sampled frequencies : k/(N dt)
-        // Note: this includes zero padding.
-        let freq_normalisation = 1.0 / (dt * n as f64);
-        let x = (start_idx..end_idx)
-            .map(|i| i as f64 * freq_normalisation)
-            .collect::<Vec<_>>();
+        // Truncate FFT
+        let fft = fft.drain(start_idx..end_idx);
 
         // Take absolute value and normalize
         // NB. Do this after truncation to save a huge amount of work
         trace!("Normalizing FFT by 1/{n_data}");
         let normalisation = 1.0 / n_data as f64;
         let fft = fft
-            .drain(start_idx..end_idx)
             .map(|y| y.norm().as_() * normalisation)
             .collect::<Vec<_>>();
 
@@ -546,7 +588,7 @@ impl PreparedFftNoData {
                 "Frequency",
                 "FFT Amplitude",
                 false,
-                &x,
+                &frequencies,
                 &fft,
                 json::json!({
                     "tags": settings.file.metadata,
@@ -606,5 +648,7 @@ pub struct PreparedFftNoData {
     n_pad: usize,
     domain_left: f64,
     domain_right: f64,
-    x: Vec<f64>,
+    start_idx: usize,
+    end_idx: usize,
+    frequencies: Vec<f64>,
 }
