@@ -593,6 +593,25 @@ fn _main() -> Result<()> {
                     unique.push(value);
                 }
             }
+
+            // Try to sort the data by downcasting
+            if unique.iter().all(|x| x.is_i64()) {
+                trace!("Sorting {k} as i64");
+                unique.sort_unstable_by_key(|x| x.as_i64().unwrap());
+            } else if unique.iter().all(|x| x.is_u64()) {
+                trace!("Sorting {k} as u64");
+                unique.sort_unstable_by_key(|x| x.as_u64().unwrap());
+            } else if unique.iter().all(|x| x.is_f64()) {
+                trace!("Sorting {k} as f64");
+                unique.sort_unstable_by_key(|x| float_ord::FloatOrd(x.as_f64().unwrap()));
+            } else if unique.iter().all(|x| x.is_string()) {
+                trace!("Sorting {k} as string");
+                unique.sort_unstable_by_key(|x| x.as_str().unwrap());
+            } else if unique.iter().all(|x| x.is_boolean()) {
+                trace!("Sorting {k} as boolean");
+                unique.sort_unstable_by_key(|x| x.as_bool().unwrap());
+            }
+
             (k, unique)
         })
         .collect::<HashMap<_, _>>();
