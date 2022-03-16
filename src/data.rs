@@ -121,7 +121,7 @@ impl Data {
 
     pub fn columns(&self) -> Box<[&'_ str]> {
         let mut c = self.iter_columns().collect::<Vec<_>>();
-        c.sort_unstable();
+        c.sort_unstable_by(|a, b| natord::compare(a, b));
         c.into_boxed_slice()
     }
 
@@ -198,32 +198,9 @@ impl XY {
     pub fn into_monotonic(self) -> MonotonicXY {
         let XY { mut x, mut y } = self;
 
-        // Invariant: x/y can not be empty
-        if *x.last().unwrap() < 0.0 {
-            // Guess that the dataset is going to be flipped by sorting
-            x.reverse();
-            y.reverse();
-        }
-
-        // Guess that we have almost sorted data,
-        // so using insertion sort instead of heap sort is faster
-        //sorting::sort_xy(&mut x, &mut y);
-        pub fn insertion_sort<T>(x: &mut [T], y: &mut [T])
-        where
-            T: PartialOrd,
-        {
-            for i in 0..x.len() {
-                for j in (0..i).rev() {
-                    if x[j] >= x[j + 1] {
-                        x.swap(j, j + 1);
-                        y.swap(j, j + 1);
-                    } else {
-                        break;
-                    }
-                }
-            }
-        }
-        insertion_sort(&mut x, &mut y);
+        // Heap sort may not be the best for almost sorted data,
+        // but it's plenty fast and has good worst case scaling
+        sorting::sort_xy(&mut x, &mut y);
 
         // Safe to unwrap as this only returns Err when the lengths are not equal
         let (x, y) = sorting::dedup_x_mean(&x, &y).unwrap();
