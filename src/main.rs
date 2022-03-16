@@ -635,7 +635,7 @@ fn _main() -> Result<()> {
     });
     std::fs::write(
         format!("output/{}/metadata.json", project.title),
-        &json::to_string(&metadata).expect("failed to generate metadata json"),
+        &json::to_string_pretty(&metadata).expect("failed to generate metadata json"),
     )
     .context("Failed to store metadata json")?;
 

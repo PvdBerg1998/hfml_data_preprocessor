@@ -322,13 +322,13 @@ impl Preprocessed {
                     interpolate_monotonic(algorithm.into(), deriv, xy.x(), xy.y(), &x_eval)
                         .with_context(|| format!("Failed to make '{src}':'{name}' monotonic"))?;
 
-                // Output post interpolation data
-                trace!("Storing post-interpolation data for '{src}':'{name}'");
+                // Output processed data
+                trace!("Storing processed data for '{src}':'{name}'");
                 saves.push(
                     save(
                         &project,
                         name,
-                        "post_interpolation",
+                        "processed",
                         &settings.file.dest,
                         &x_label,
                         &y_label,
@@ -342,7 +342,7 @@ impl Preprocessed {
                         }),
                     )
                     .with_context(|| {
-                        format!("Failed to store post-interpolated data for '{src}':'{name}'")
+                        format!("Failed to store processed data for '{src}':'{name}'")
                     })?,
                 );
 
