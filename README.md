@@ -6,9 +6,9 @@ This tool is meant to quickly extract, inspect, preprocess and Fourier transform
 - Autovectorisation through LLVM and rustc
 - Insane runtime performance: ~500 ms per project
 
----
+# Capabilities
 
-## Capabilities
+## Processing steps
 The processing done by the tool is split into three steps:
 - Preprocessing
 - Processing
@@ -38,8 +38,6 @@ Each step is fully controlled using a settings template (more information furthe
 - FTFT (Finite Time Fourier Transform), subdomain lower/upper/center uniform sweeping
 
 If enabled, the FFT is accelerated using the first available NVIDIA GPU. For realistic datasets, the speedup is often more than 5x.
-
----
 
 ## Performance
 This tool was developed with three core ideas:
@@ -72,8 +70,6 @@ The `Settings.toml` template contains documentation explaining all possible opti
 
 **Note that while most settings are checked for validity, it is currently not feasible to check specialisation targets.** This means that you should take care when changing your output destinations if you are using specialisations.
 
----
-
 ## Running
 The tool is compiled to machine code from source, unlike Python scripts. This allows for much better runtime performance as it runs directly on your hardware, but complicates the installation a bit because a binary may not necessarily be compatible with your hardware. If one has already obtained a compatible compiled binary, usage is simple:
     
@@ -88,8 +84,6 @@ Further settings are documented through the runtime help option:
 However, these flags are not necessary for common use.
 
 When compiled with [NVIDIA CUDA](https://developer.nvidia.com/cufft) support, the proprietary runtime libraries must be reachable on your device. **If you do not provide the required libraries, the tool will not start and will most likely crash without an error message.** If you do not wish to make use of GPU FFTs, this requirement can be relaxed by providing a compilation flag (see the section on compilation).
-
----
 
 ## Output structure
 
@@ -132,6 +126,8 @@ The data is processed as follows and in the following order:
 
 Some folders or files may not be generated if you have disabled the corresponding step in your template. The raw and preprocessed data may include preliminary plot generation. This facilitates the quick iteration process of changing settings, rerunning and inspecting the result. Files inside the output folders are named as you defined inside the settings. This may include subfolders.
 
+---
+
 **You should not manually access these generated files.** Information about the generated file structure is stored in `metadata.json` in `json` format. This is meant to simplify further postprocessing by providing information about every generated file. Instead of manually extracting files, it should be done by making use of this metadata and an additional postprocessing script. For this reason, additional measurement metadata ("tags") can be defined in `Settings.toml` per file.
 The amount of information in the `metadata.json` includes:
 - A list of all variables
@@ -146,7 +142,7 @@ The sorting applied to the user tags is using "natural human ordering", not the 
 
 **The direct usage of floating point tags is strongly discouraged! Using them as a key to a dictionary is unreliable due to the fundamental precision errors. Floats are not real numbers and therefore some values cannot be represented exactly.**
 
-### Example postprocessing script
+## Example postprocessing script
 
 Imagine you want to plot the FFTs for each extracted variable measured at an angle of zero degrees. Simply load the `metadata.json` and filter it appropriately:
 
