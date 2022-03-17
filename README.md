@@ -40,7 +40,7 @@ Each step is fully controlled using a settings template (more information furthe
 If enabled, the FFT is accelerated using the first available NVIDIA GPU. For realistic datasets, the speedup is often more than 5x.
 
 ## Performance
-This tool was developed with three core ideas:
+This tool was developed with three core ideas in mind:
 - Ease of use
 - Reliability
 - Performance
