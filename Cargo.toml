@@ -39,6 +39,6 @@ toml = "0.5.8"
 built = {version = "0.5.1", features = ["chrono"]}
 
 [profile.release]
-codegen-units = 1
+#codegen-units = 1
 debug = true
 lto = "fat"

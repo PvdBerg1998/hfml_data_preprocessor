@@ -235,13 +235,13 @@ If all is ready, the tool can then be compiled through Cargo, the build manager 
 
 ```shell
 cd hfml_data_preprocessor
-cargo build --release
+cargo build --release --locked
 ```
 
 If no NVIDIA hardware is present or if you do not manage to perform the installation, a compiletime flag can be set to disable GPU capability:
 
 ```shell
-cargo build --release --no-default-features
+cargo build --release --locked --no-default-features
 ```
 
 If compilation is successful, the binary is placed inside the `target/release` folder.
