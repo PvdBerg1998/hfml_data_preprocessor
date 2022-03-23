@@ -6,6 +6,8 @@ This tool is meant to quickly extract, inspect, preprocess and Fourier transform
 - Autovectorisation through LLVM and rustc
 - Insane runtime performance: ~500 ms per project
 
+Prebuilt binaries are available under the [releases](https://github.com/PvdBerg1998/hfml_data_preprocessor/releases) section. Please check the [changelog](https://github.com/PvdBerg1998/hfml_data_preprocessor/blob/master/CHANGELOG.md) before updating.
+
 # Capabilities
 
 ## Processing steps
