@@ -55,16 +55,16 @@ To make the performance claim more quantitative, benchmark results are the best.
 - 1 core   GPU disabled  : 44 sec (1.0x)
 - 4 cores  GPU disabled  : 27 sec (1.6x)
 - 1 core   GPU enabled   : 11 sec (4.0x)
-- 4 cores  GPU enabled   : 6 sec  (7.3x)
+- 4 cores  GPU enabled   :  6 sec (7.3x)
 ```
 
 These numbers vary strongly depending on your analysis parameters. For extreme settings, multithreading and GPU FFT will provide larger benefits. For FFT heavy workloads, such as the FTFT with multiple files, the difference in performance is like night and day. Just a single template, executing a FTFT of 20 intervals on 8 files with 5 xy pairs each results in the following data:
 
 ```
-- 1 core   GPU disabled  : 83 sec  ( 1.0x)
-- 4 cores  GPU disabled  : 46 sec  ( 1.8x)
-- 1 core   GPU enabled   : 3.8 sec (21.8x)
-- 4 cores  GPU enabled   : 2.7 sec (30.7x)
+- 1 core   GPU disabled  : 83.0 sec ( 1.0x)
+- 4 cores  GPU disabled  : 46.0 sec ( 1.8x)
+- 1 core   GPU enabled   :  3.8 sec (21.8x)
+- 4 cores  GPU enabled   :  2.7 sec (30.7x)
 ```
 
 One can understand that running this template for multiple samples in a dataset quickly becomes unmanageable without GPU acceleration.
