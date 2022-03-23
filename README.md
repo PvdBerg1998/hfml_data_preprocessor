@@ -199,35 +199,63 @@ for variable, fft in data:
 Python utilities for common data extraction tasks will soon be available!
 
 # Compilation
-The tool is written in the Rust programming language. A working Rust compiler is therefore required. The stable toolchain is sufficient. For installation, follow [these steps](https://www.rust-lang.org/tools/install). This may require you to install additional build tools, documented [here](https://rust-lang.github.io/rustup/installation/windows.html).
+The tool is written in the Rust programming language. A working Rust compiler is therefore required. However, it also relies on third party libraries and therefore requires a bit more attention to compile from source. The main external dependencies are:
+- [GNU Scientific Library](https://www.gnu.org/software/gsl/) (GSL) for general purpose math. This is bundled and compiled using a C/C++ compiler automatically.
+- [CUDA toolkit](https://developer.nvidia.com/cufft) for GPU FFT acceleration. This is proprietary and therefore must be installed manually.
 
-The tool itself relies on two libraries:
-- [GNU Scientific Library](https://www.gnu.org/software/gsl/) (GSL) for general purpose math
-- [CUDA toolkit](https://developer.nvidia.com/cufft) for GPU FFT acceleration
+Linux package managers make the compilation almost trivial and it is therefore recommended to use a Linux installation instead of Windows.
 
-The GSL is bundled and compiled automatically. This requires a C/C++ compiler to be present, as well as the build tool `cmake`. These compilers will most likely already be available once you have a working Rust installation. The NVIDIA CUDA libraries are proprietary and must therefore be installed manually.
-
-## Requirements
-
-Linux package managers make the compilation almost trivial and it is therefore recommended to use a Linux installation instead of Windows. The following commands should install all requirements:
-
-Ubuntu:
-
+### Ubuntu
+Required:
 ```shell
-sudo apt install build-essential cmake libclang-dev nvidia-cuda-toolkit pkg-config
+sudo apt install build-essential cmake libclang-dev
 ```
 
-Arch Linux:
-
+Optional CUDA support:
 ```shell
-sudo pacman -S base-devel cmake clang cuda pkg-config
+sudo apt install pkg-config nvidia-cuda-toolkit
 ```
 
-For Windows these steps must be done manually through provided installers. It is recommended to install the MSVC flavour of Rust tooling. This does NOT require a full installation of Visual Studio.
+### Arch Linux
+Required:
+```shell
+sudo pacman -S base-devel cmake clang
+```
+
+Optional CUDA support:
+```shell
+sudo pacman -S cuda pkg-config
+```
+
+The installation location of the CUDA libraries is determined through `pkg-config`. If this fails, the location is guessed to be `/usr/local/cuda`. After installation you can proceed to install Rust and Cargo following [these steps](https://www.rust-lang.org/tools/install). 
+
+### Windows
+It is recommended to install the MSVC flavour of Rust tooling. This does NOT require a full installation of Visual Studio. Windows uses a global "path" to find installed libraries. **If an installer presents the option to add itself to the path, you should enable it unless you want to add all paths manually afterwards.** Without proper setup on your path, the tools are not able to find eachother on your system. This will result in a compilation error about missing files or tools.
+
+Install the following tools in order:
+- [MSVC Build tools](https://visualstudio.microsoft.com/downloads/?q=build+tools) under "Tools for Visual Studio". Currently, the latest version is located [here](https://aka.ms/vs/17/release/vs_BuildTools.exe).
+- [Rust and Cargo](https://www.rust-lang.org/tools/install). After installation, you should be able to run `rustup show` in a command line as a check. If it does not work, try restarting your terminal.
+- [CMake](https://cmake.org/download/).
+- [LLVM Clang](https://releases.llvm.org/download.html). Prebuilt libraries are on GitHub. Currently, the last version is located [here](https://github.com/llvm/llvm-project/releases/download/llvmorg-13.0.1/LLVM-13.0.1-win64.exe).
+- Optional CUDA support: [NVIDIA CUDA Toolkit](https://developer.nvidia.com/cuda-downloads). You need to manually create a new `CUDA_PATH` environment variable, pointing to the folder containing both `lib` and `include`. The location of this folder depends on where you installed it, most likely `C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.3/`. See [this tutorial](https://www.howtogeek.com/118594/how-to-edit-your-system-path-for-easy-command-line-access/) for guidance, but do not edit the regular `Path`, instead create a new entry.
 
 Note that Windows 10 and Windows 11 support an embedded Linux installation named [WSL](https://docs.microsoft.com/en-us/windows/wsl/install). This provides the convenience of Linux without requiring a separate bootable installation. Running through WSL may require [additional steps](https://docs.nvidia.com/cuda/wsl-user-guide/index.html) to provide GPU support.
 
-On Linux, the installation location of the CUDA libraries is determined through `pkg-config`. If this fails, the location is guessed to be `/usr/local/cuda`. On Windows, the `CUDA_PATH` environment variable must be set to the folder containing both `lib` and `include`.
+## Optional: CPU specific optimisations
+Enabling these settings allows the Rust compiler to optimize specifically for your CPU. This includes generating SIMD instructions, see for example [AVX](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions). This may improve performance, but the generated binary may not run on all your devices if those do not have the same capabilities. However, this risk is fairly low nowadays as most of these extensions are common in modern CPUs. It is therefore recommended to enable them.
+
+Create a `cargo.toml` file at one of the locations listed [here](https://doc.rust-lang.org/cargo/reference/config.html). Add the following lines:
+
+```toml
+[target.TARGET]
+rustflags = [
+	"-C",
+	"target-cpu=native"
+]
+```
+
+Replace `TARGET` with your target triple, which can be found by running `rustup target list`. For Linux, this is most likely `x86_64-unknown-linux-gnu`, while for Windows it is most likely `x86_64-pc-windows-msvc`.
+
 
 ## Cargo
 
@@ -244,7 +272,7 @@ If no NVIDIA hardware is present or if you do not manage to perform the installa
 cargo build --release --locked --no-default-features
 ```
 
-If compilation is successful, the binary is placed inside the `target/release` folder.
+If compilation is successful, the binary is placed inside the `target/release` folder. For easy use, the executable should be placed at a location that is on your path. On Linux, one could create a soft link to e.g. `~/.local/bin` or another common folder on your path. On Windows the folder containing the binary should be added to the `Path` environment variable ([tutorial](https://www.howtogeek.com/118594/how-to-edit-your-system-path-for-easy-command-line-access/)). If successful, you should be able to run `hfml_data_preprocessor` in your terminal from any location.
 
 # Licensing
 This repository is licensed under the GNU General Public License version 3. This is required because the tool uses the GNU Scientific Library and makes sure everyone has free access to this source code. If you use this tool for publication, a reference to this repository would be appreciated.
