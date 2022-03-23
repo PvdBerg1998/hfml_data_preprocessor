@@ -4,7 +4,7 @@ This tool is meant to quickly extract, inspect, preprocess and Fourier transform
 - Optional multithreading and NVIDIA GPU support with automatic batching
 - Full data and settings verification
 - Autovectorisation through LLVM and rustc
-- Insane runtime performance: ~500 ms per project
+- Insane runtime performance (see benchmarks)
 
 Prebuilt binaries are available under the [releases](https://github.com/PvdBerg1998/hfml_data_preprocessor/releases) section. Please check the [changelog](https://github.com/PvdBerg1998/hfml_data_preprocessor/blob/master/CHANGELOG.md) before updating.
 
@@ -58,7 +58,16 @@ To make the performance claim more quantitative, benchmark results are the best.
 - 4 cores  GPU enabled   : 6 sec  (7.3x)
 ```
 
-These numbers vary strongly depending on your analysis parameters. For extreme settings, multithreading and GPU FFT will provide larger benefits.
+These numbers vary strongly depending on your analysis parameters. For extreme settings, multithreading and GPU FFT will provide larger benefits. For FFT heavy workloads, such as the FTFT with multiple files, the difference in performance is like night and day. Just a single template, executing a FTFT of 20 intervals on 8 files with 5 xy pairs each results in the following data:
+
+```
+- 1 core   GPU disabled  : 83 sec  ( 1.0x)
+- 4 cores  GPU disabled  : 46 sec  ( 1.8x)
+- 1 core   GPU enabled   : 3.8 sec (21.8x)
+- 4 cores  GPU enabled   : 2.7 sec (30.7x)
+```
+
+One can understand that running this template for multiple samples in a dataset quickly becomes unmanageable without GPU acceleration.
 
 # Usage
 ## Settings format
