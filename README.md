@@ -244,7 +244,7 @@ Note that Windows 10 and Windows 11 support an embedded Linux installation named
 ## Optional: CPU specific optimisations
 Enabling these settings allows the Rust compiler to optimize specifically for your CPU. This includes generating SIMD instructions, see for example [AVX](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions). This may improve performance, but the generated binary may not run on all your devices if those do not have the same capabilities. However, this risk is fairly low nowadays as most of these extensions are common in modern CPUs. It is therefore recommended to enable them.
 
-Create a `cargo.toml` file at one of the locations listed [here](https://doc.rust-lang.org/cargo/reference/config.html). Add the following lines:
+Create a `config.toml` file at one of the locations listed [here](https://doc.rust-lang.org/cargo/reference/config.html). Add the following lines:
 
 ```toml
 [target.TARGET]
