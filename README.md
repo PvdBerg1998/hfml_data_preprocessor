@@ -226,7 +226,7 @@ sudo pacman -S base-devel cmake clang
 
 Optional CUDA support:
 ```shell
-sudo pacman -S cuda pkg-config
+sudo pacman -S pkg-config cuda
 ```
 
 The installation location of the CUDA libraries is determined through `pkg-config`. If this fails, the location is guessed to be `/usr/local/cuda`. After installation you can proceed to install Rust and Cargo following [these steps](https://www.rust-lang.org/tools/install). 
