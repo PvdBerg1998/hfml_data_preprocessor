@@ -17,6 +17,7 @@
 */
 
 use crate::has_dup;
+use anyhow::bail;
 use anyhow::ensure;
 use anyhow::Error;
 use anyhow::Result;
@@ -71,7 +72,15 @@ impl FromStr for Data {
             .collect::<Vec<SmallVec<[&str; HEADER_GUESS]>>>();
 
         for (i, line) in data.iter().enumerate() {
-            ensure!(line.len() == headers.len(), "missing column at line {i}");
+            if line.len() < headers.len() {
+                bail!("missing column at line {i}");
+            } else if line.len() > headers.len() {
+                if i == 0 {
+                    bail!("missing header(s)");
+                } else {
+                    bail!("missing header(s) or extra column(s) at line {i}");
+                }
+            }
         }
 
         // Split data into columns
