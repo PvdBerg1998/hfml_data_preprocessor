@@ -1,6 +1,10 @@
 # Changelog
 Version `2.0.0` is considered as the first "ready for use" release and changes before this point are not documented.
 
+## [2.1.1]
+### Added
+- Separate error messages for missing column or missing header in data files
+
 ## [2.1.0]
 ### Changed
 - Renamed `post_interpolation` to `processed` for consistency with `preprocessed` 
