@@ -414,22 +414,17 @@ fn _main() -> Result<()> {
                     }
                     FftSweep::Windows => {
                         // Sweep center of window
-                        // Sweep uniformly in x
                         // Use 50% overlap between the windows
-                        let x_dx = (x_right - x_left) / ((fft.sweep_steps + 1) as f64);
+                        let dx = (right - left) / ((fft.sweep_steps + 1) as f64);
 
                         // Move the window along the domain
                         let prepared = (0..fft.sweep_steps)
                             .into_par_iter()
                             .map(|i| {
                                 // NB. Careful with shadowing!
-                                let x_right = x_left + (i + 2) as f64 * x_dx;
-                                let x_left = x_left + i as f64 * x_dx;
-                                if invert_x {
-                                    (i, 1.0 / x_right, 1.0 / x_left)
-                                } else {
-                                    (i, x_left, x_right)
-                                }
+                                let right = left + (i + 2) as f64 * dx;
+                                let left = left + i as f64 * dx;
+                                (i, left, right)
                             })
                             .map(|(i, left, right)| {
                                 processed
