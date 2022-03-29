@@ -285,6 +285,18 @@ cargo build --release --locked --no-default-features
 
 If compilation is successful, the binary is placed inside the `target/release` folder. For easy use, the executable should be placed at a location that is on your path. On Linux, one could create a soft link to e.g. `~/.local/bin` or another common folder on your path. On Windows the folder containing the binary should be added to the `Path` environment variable ([tutorial](https://www.howtogeek.com/118594/how-to-edit-your-system-path-for-easy-command-line-access/)). If successful, you should be able to run `hfml_data_preprocessor` in your terminal from any location.
 
+# Troubleshooting
+If you encounter a *panic*, please tell me personally or create an issue on this repository explaining the details of the crash. This should never happen and is a bug in the code. A panic will look similar to the following message:
+```
+thread 'worker <n>' panicked at <message>, src/<file.rs>
+```
+If the panic is related to GPU FFT, the default error message may be rather unhelpful. Try to run it using the CPU with the flag `--disable-gpu`.
+
+To report the error, please go through the following steps:
+- Try to run in a higher verbosity mode to see if you can spot the issue (`-v` or `-vv`)
+- Run the program with `RUST_BACKTRACE=1` ([tutorial for Windows](https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/set_1)) and provide the backtrace
+- Provide the log file, data and template to reproduce the issue
+
 # Licensing
 This repository is licensed under the GNU General Public License version 3. This is required because the tool uses the GNU Scientific Library and makes sure everyone has free access to this source code. If you use this tool for publication, a reference to this repository would be appreciated.
 

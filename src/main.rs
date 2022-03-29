@@ -225,6 +225,11 @@ fn _main() -> Result<()> {
                 warn!("Derivative will not be applied without interpolation");
             }
 
+            // FFT without interpolation
+            if settings.processing.interpolation.is_none() && fft.is_some() {
+                warn!("FFT without interpolation will result in wrong frequencies if your data is not uniformly sampled");
+            }
+
             // Linear interpolation with second derivative
             if matches!(
                 settings.processing.interpolation,

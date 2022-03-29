@@ -441,13 +441,40 @@ impl Processed {
         }
 
         // Invariant: x has a length of >= 2
-        // Assume that the data is uniform (or interpolated)
+        // We have to assume the data is uniformly sampled or interpolated here
         let dt = xy.x()[1] - xy.x()[0];
+        let nyquist = 0.5 / dt;
+        let df = nyquist / (desired_n as f64);
+        // This is not necessarily equal for all files, even after interpolation,
+        // because the trimmed domains are not exactly the same length
+        // This can't really be solved in a consistent way, perhaps by interpolating the full data domain,
+        // and then resampling on the trimmed domain. The issue is that it requires information outside the trimmed domain,
+        // meaning we can either ignore it, extrapolate, use "fake" frequencies on the domain, or resample.
+        // In practise the difference should be less than 2 dt, with df vanishing when using some zero padding.
+        trace!("FFT dt = {dt}, df = {df}, Nyquist = {nyquist} for '{src}':'{name}'");
 
-        // Calculate frequency space cutoff indices
+        // Calculate clamped frequency space cutoff indices
         // Note: this includes zero padding
-        let start_idx = (lower_cutoff * dt * desired_n as f64).ceil() as usize;
-        let end_idx = (upper_cutoff * dt * desired_n as f64).ceil() as usize;
+        let max_fft_len = desired_n / 2 + 1;
+        let start_idx = (lower_cutoff * dt * desired_n as f64).floor() as usize;
+        ensure!(
+            start_idx < max_fft_len,
+            "FFT lower cutoff {lower_cutoff} is higher than Nyquist frequency {nyquist:.2} for '{src}':'{name}'"
+        );
+        let end_idx = {
+            let end_idx = (upper_cutoff * dt * desired_n as f64).ceil() as usize;
+            if end_idx > max_fft_len {
+                warn!("FFT upper cutoff {upper_cutoff} is higher than Nyquist frequency {nyquist:.2} for '{src}':'{name}'");
+                // End index is exclusive
+                max_fft_len
+            } else {
+                end_idx
+            }
+        };
+        ensure!(
+            start_idx != end_idx,
+            "FFT trimmed domain is empty for '{src}':'{name}'"
+        );
 
         // Sampled frequencies : k/(N dt)
         let freq_normalisation = 1.0 / (dt * desired_n as f64);
@@ -512,6 +539,7 @@ impl PreparedFft {
     }
 
     pub fn minimum_fft_len(&self) -> usize {
+        // We just ignore the values starting from 0 and request all FFT values up to our end index
         self.inner.end_idx
     }
 
@@ -548,21 +576,19 @@ impl PreparedFftNoData {
         debug!("FFT postprocessing file '{src}': dataset '{name}'");
         let mut saves = vec![];
 
-        // Check truncation boundaries
-        if start_idx >= fft.len() {
-            // This is always invalid
-            bail!("FFT lower truncation is above Nyquist frequency");
-        }
-        let end_idx = {
-            if end_idx > fft.len() {
-                warn!("FFT upper truncation is above Nyquist frequency");
-                fft.len()
-            } else {
-                end_idx
-            }
-        };
-
         // Truncate FFT
+        assert!(
+            start_idx < fft.len(),
+            "FFT start index {} > FFT length {}",
+            start_idx,
+            fft.len()
+        );
+        assert!(
+            end_idx <= fft.len(),
+            "FFT end index {} > FFT length {}",
+            end_idx,
+            fft.len()
+        );
         let fft = fft.drain(start_idx..end_idx);
 
         // Take absolute value and normalize
