@@ -250,9 +250,7 @@ sweep = "upper"
 # Must be more than 1.
 #
 # This divides the domain into n equal parts.
-# If sweep is set to "lower" or "upper", the sweep is uniform in x.
-# If sweep is set to "windows", the sweep is uniform in x or 1/x,
-# depending on the setting invert_x.
+# The sweep is always uniform in x.
 sweep_steps = 5
 
 #

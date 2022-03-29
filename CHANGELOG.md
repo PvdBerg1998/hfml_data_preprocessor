@@ -1,6 +1,10 @@
 # Changelog
 Version `2.0.0` is considered as the first "ready for use" release and changes before this point are not documented.
 
+## `2.2.0`
+### Changed
+- FFT sweep mode "windows" is now uniform in B, not 1/B
+
 ## `2.1.2`
 ### Added
 - Extra trace-level logging with FFT frequency and sampling information
@@ -22,7 +26,7 @@ Version `2.0.0` is considered as the first "ready for use" release and changes b
 - Use natural string sorting for metadata tags
 
 ### Fixed
-- Reverted data sorting to heapsort for good worst case performance
+- Reverted data sorting to heap sort for good worst case performance
 
 ## `2.0.1`
 ### Added
