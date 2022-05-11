@@ -90,7 +90,12 @@ impl Prepared {
 
         // Monotonicity
         trace!("Making '{src}':'{name}' monotonic");
-        let mut xy = xy.into_monotonic();
+        let mut xy = match xy.into_monotonic() {
+            Some(xy) => xy,
+            None => {
+                bail!("Dataset is too small after deduplication. Is your x variable changing?");
+            }
+        };
 
         // Output raw data
         trace!("Storing raw data for '{src}':'{name}'");
@@ -351,7 +356,12 @@ impl Preprocessed {
             None => xy.take_xy(),
         };
 
-        let xy = MonotonicXY::new_unchecked(x, y);
+        let xy = match MonotonicXY::new(x, y) {
+            Some(xy) => xy,
+            None => {
+                bail!("Dataset is too small after interpolation");
+            }
+        };
 
         Ok((
             Processed {

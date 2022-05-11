@@ -210,6 +210,13 @@ fn _main() -> Result<()> {
             // Warn about possibly invalid configurations
             // Todo: add more
 
+            // Very small interpolation amount
+            if let InterpolationLength::Amount(n) = settings.processing.interpolation_n {
+                if n < 64 {
+                    warn!("Interpolation amount is probably too small");
+                }
+            }
+
             // X inversion without interpolation
             if settings.processing.interpolation.is_none() && settings.preprocessing.invert_x {
                 warn!("Inverting x without interpolation will most likely result in wrong results");

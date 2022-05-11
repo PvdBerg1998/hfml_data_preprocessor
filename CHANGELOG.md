@@ -1,6 +1,10 @@
 # Changelog
 Version `2.0.0` is considered as the first "ready for use" release and changes before this point are not documented.
 
+# `2.1.4`
+### Fixed
+- Crash when x variable was constant for the entire data file
+
 ## `2.1.3`
 ### Changed
 - Updated `gsl_rust` wrapper. Impulse filtering now truncates its window near the domain boundaries. This implies that a polluted zero-field bin, which often contains some random data points caused by acquisition errors, can be filtered away.

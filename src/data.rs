@@ -204,7 +204,7 @@ impl XY {
         self.x.iter().all(|x| x.is_finite()) && self.y.iter().all(|y| y.is_finite())
     }
 
-    pub fn into_monotonic(self) -> MonotonicXY {
+    pub fn into_monotonic(self) -> Option<MonotonicXY> {
         let XY { mut x, mut y } = self;
 
         // Heap sort may not be the best for almost sorted data,
@@ -214,7 +214,9 @@ impl XY {
         // Safe to unwrap as this only returns Err when the lengths are not equal
         let (x, y) = sorting::dedup_x_mean(&x, &y).unwrap();
 
-        MonotonicXY::new_unchecked(x, y)
+        // Note: if all x values are equal, the length of x and y will now be 1,
+        // so MonotonicXY::new can return None.
+        MonotonicXY::new(x, y)
     }
 
     pub fn x(&self) -> &[f64] {
@@ -232,10 +234,11 @@ impl XY {
 
 #[allow(dead_code)]
 impl MonotonicXY {
-    pub fn new_unchecked(x: Vec<f64>, y: Vec<f64>) -> Self {
-        assert!(x.len() >= 2);
-        assert!(y.len() >= 2);
-        MonotonicXY { x, y }
+    pub fn new(x: Vec<f64>, y: Vec<f64>) -> Option<Self> {
+        if x.len() < 2 || y.len() < 2 {
+            return None;
+        }
+        Some(MonotonicXY { x, y })
     }
 
     pub fn len(&self) -> usize {
