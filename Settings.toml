@@ -150,8 +150,7 @@ interpolation_n = "min"
 # Optional: derivative
 # Possible values: 0, 1, 2.
 #
-# Note that _linear_ interpolation will result in a C^0 function,
-# such that the derivative will be garbage. The second derivative will be zero by definition.
+# Note that _linear_ interpolation will make the second derivative zero.
 #
 # Note that the derivative massively amplifies noise.
 # This is of no concern for the FFT.
