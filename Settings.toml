@@ -67,8 +67,6 @@ impulse_filter = 0
 # Default: 1
 impulse_tuning = 1
 
-# TODO: Other (time domain) filtering, such as Savitsky-Golay.
-
 # Optional: mask bad data
 #
 # Recommended: apply to a range of missing or invalid datapoints
