@@ -58,8 +58,6 @@ impl FromStr for Data {
                 break;
             }
         }
-
-        // Remove mutability
         let headers = headers;
         let header_lines = header_lines;
 

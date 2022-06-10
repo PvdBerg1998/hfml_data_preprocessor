@@ -111,6 +111,7 @@ pub fn load<P: AsRef<Path>>(path: P) -> Result<Template> {
                     .to_owned();
                 Ok(Rename { from, to })
             })
+            .filter_ok(|rename| rename.from != rename.to)
             .collect::<Result<Vec<_>>>()
             .context("Failed to deserialize rename section")?,
         None => vec![],
