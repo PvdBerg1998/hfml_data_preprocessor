@@ -16,6 +16,8 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#![allow(dead_code)]
+
 use crate::data::Data;
 use crate::data::MonotonicXY;
 use crate::data::XY;

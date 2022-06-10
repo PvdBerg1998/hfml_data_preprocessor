@@ -345,6 +345,7 @@ fn _main() -> Result<()> {
     // FFT
     let timestamp_fft = Instant::now();
     if let Some(fft) = fft {
+        #[cfg(feature = "cuda")]
         let fft_amount = processed.len()
             * match fft.sweep {
                 FftSweep::Full => 1,
