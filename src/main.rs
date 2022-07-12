@@ -43,6 +43,7 @@ use log::*;
 use rayon::prelude::*;
 use serde_json as json;
 use settings::Template;
+use simplelog::format_description;
 use simplelog::*;
 use std::{
     collections::HashMap,
@@ -90,7 +91,7 @@ fn _main() -> Result<()> {
         TermLogger::new(
             log_level,
             ConfigBuilder::default()
-                .set_time_format_str("%H:%M:%S.%f")
+                .set_time_format_custom(format_description!("[hour]:[minute]:[second].[subsecond]"))
                 .set_thread_mode(ThreadLogMode::Names)
                 .set_thread_level(LevelFilter::Error)
                 .set_location_level(LevelFilter::Off)
@@ -102,7 +103,7 @@ fn _main() -> Result<()> {
         WriteLogger::new(
             LevelFilter::Trace,
             ConfigBuilder::default()
-                .set_time_format_str("%H:%M:%S.%f")
+                .set_time_format_custom(format_description!("[hour]:[minute]:[second].[subsecond]"))
                 .set_thread_mode(ThreadLogMode::Names)
                 .set_thread_level(LevelFilter::Error)
                 .set_location_level(LevelFilter::Off)
