@@ -626,7 +626,7 @@ dependencies = [
 
 [[package]]
 name = "hfml_data_preprocessor"
-version = "2.1.5"
+version = "2.1.6"
 dependencies = [
  "anyhow",
  "built",
