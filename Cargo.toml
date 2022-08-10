@@ -3,7 +3,7 @@ authors = ["Pim van den Berg"]
 edition = "2021"
 license-file = "LICENSE"
 name = "hfml_data_preprocessor"
-version = "2.1.5"
+version = "2.1.6"
 
 [features]
 cuda = ["cufft_rust"]
