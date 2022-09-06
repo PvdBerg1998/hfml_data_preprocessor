@@ -108,6 +108,26 @@ impl Prepared {
         let n_log2 = (xy.len() as f64).log2();
         trace!("Dataset '{src}':'{name}' length: ~2^{n_log2:.2}");
 
+        // Output unprocessed data
+        trace!("Storing unprocessed data for '{src}':'{name}'");
+        saves.push(
+            save(
+                &project,
+                name,
+                "unprocessed",
+                &settings.file.dest,
+                &x_label,
+                &y_label,
+                project.plot,
+                xy.x(),
+                xy.y(),
+                json::json!({
+                    "tags": settings.file.metadata,
+                }),
+            )
+            .with_context(|| format!("Failed to store unprocessed data for '{src}':'{name}'"))?,
+        );
+
         // Monotonicity
         trace!("Making '{src}':'{name}' monotonic");
         let mut xy = match xy.into_monotonic() {
