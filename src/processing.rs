@@ -118,7 +118,7 @@ impl Prepared {
                 &settings.file.dest,
                 &x_label,
                 &y_label,
-                project.plot,
+                false, // Can't plot non monotonic data
                 xy.x(),
                 xy.y(),
                 json::json!({
