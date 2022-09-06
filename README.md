@@ -109,6 +109,7 @@ The MessagePack format is recommended if you will postprocess the data in anothe
 Your typical project folder will look something like this:
 
     output/<project name>/<variable>
+        /unprocessed
         /raw
         /preprocessed
         /inverted
@@ -128,6 +129,7 @@ Your typical project folder will look something like this:
     ...
 
 The data is processed as follows and in the following order:
+- `unprocessed`: no processing is applied at all.
 - `raw`: only sorted and deduplicated, such that the x data is monotonically increasing. This is often required for filtering algorithms. All steps after this will stay monotonic.
 - `preprocessed`: after masking, filtering, premultiplication. Essentially the full preprocessing machinery except x inversion, as this makes visual comparison with the raw data near impossible.
 - `inverted`: see `preprocessed`, but after x inversion.
