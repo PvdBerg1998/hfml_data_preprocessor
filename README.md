@@ -209,8 +209,6 @@ for variable, fft in data:
     fft[fft.x.between(0, 1000)].plot(x="x", y="y", title=variable)
 ```
 
-Python utilities for common data extraction tasks will soon be available!
-
 # Compilation
 The tool is written in the Rust programming language. A working Rust compiler is therefore required. However, it also relies on third party libraries and therefore requires a bit more attention to compile from source. The main external dependencies are:
 - [GNU Scientific Library](https://www.gnu.org/software/gsl/) (GSL) for general purpose math. This is bundled and compiled using a C/C++ compiler automatically.
