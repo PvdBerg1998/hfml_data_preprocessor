@@ -1,7 +1,7 @@
 /*
     main.rs : hfml_data_preprocessor. A data preprocessor for use with data
     generated during transport measurements at the HFML, Radboud University.
-    Copyright (C) 2021 Pim van den Berg
+    Copyright (C) 2022 Pim van den Berg
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -31,6 +31,7 @@ use anyhow::bail;
 use anyhow::ensure;
 use anyhow::Context;
 use anyhow::Result;
+use clap::ArgAction;
 use clap::Parser;
 #[cfg(feature = "cuda")]
 use cufft_rust as cufft;
@@ -688,7 +689,7 @@ pub fn has_dup<T: PartialEq>(slice: &[T]) -> bool {
 #[derive(Clone, Debug, PartialEq, Eq, Parser)]
 struct Args {
     template: PathBuf,
-    #[clap(short, long, parse(from_occurrences))]
+    #[clap(short, long, action = ArgAction::Count)]
     verbose: usize,
     #[clap(short, long)]
     quiet: bool,
