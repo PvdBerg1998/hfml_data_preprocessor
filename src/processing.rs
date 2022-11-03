@@ -73,7 +73,7 @@ impl Settings {
 
         // Prepare labels
         let x_label = x.to_owned();
-        let y_label = y.to_owned();
+        let y_label = format!("{} ({})", name, y);
 
         Ok(Some(Prepared {
             project,
@@ -407,8 +407,8 @@ impl Preprocessed {
             Processed {
                 project,
                 settings,
-                x_label,
-                y_label,
+                // x_label,
+                // y_label,
                 xy,
             },
             saves,
@@ -431,8 +431,8 @@ impl Processed {
         let Self {
             project,
             settings,
-            x_label,
-            y_label,
+            // x_label,
+            // y_label,
             mut xy,
         } = self;
         let name = &settings.extract.name;
@@ -541,8 +541,8 @@ impl Processed {
                 settings,
                 fft_settings,
                 sweep_index,
-                x_label,
-                y_label,
+                // x_label,
+                // y_label,
                 n_data,
                 n_pad,
                 domain_left,
@@ -602,7 +602,7 @@ impl PreparedFft {
 impl PreparedFftNoData {
     pub fn finish<F: Float + AsPrimitive<f64>>(
         self,
-        // May be cut off above end_idx (GPU optimisation)
+        // May be cut off above end_idx (GPU optimization)
         mut fft: Vec<Complex<F>>,
     ) -> Result<Vec<SaveRecord>> {
         let Self {
@@ -610,8 +610,8 @@ impl PreparedFftNoData {
             settings,
             fft_settings,
             sweep_index,
-            x_label: _,
-            y_label: _,
+            // x_label: _,
+            // y_label: _,
             n_data,
             n_pad: _,
             domain_left,
@@ -704,8 +704,8 @@ pub struct Preprocessed {
 pub struct Processed {
     pub project: Project,
     pub settings: Arc<Settings>,
-    x_label: String,
-    y_label: String,
+    // x_label: String,
+    // y_label: String,
     xy: MonotonicXY,
 }
 
@@ -721,8 +721,8 @@ pub struct PreparedFftNoData {
     pub settings: Arc<Settings>,
     fft_settings: Fft,
     sweep_index: Option<usize>,
-    x_label: String,
-    y_label: String,
+    // x_label: String,
+    // y_label: String,
     n_data: usize,
     n_pad: usize,
     domain_left: f64,

@@ -1,6 +1,10 @@
 # Changelog
 Version `2.0.0` is considered as the first "ready for use" release and changes before this point are not documented.
 
+# `2.1.8`
+### Changed
+- The preliminary plots now use both the column name as well as the variable name in the y label.
+
 # `2.1.7`
 ### Added
 - Additional output stage called `unprocessed`, which is a step before `raw`. This is before the step which makes the data monotonic. This can help avoid artifacts in case your data does not have a 1:1 correspondence between x and y.

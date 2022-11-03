@@ -3,7 +3,7 @@ This tool is meant to quickly extract, inspect, preprocess and Fourier transform
 - State-of-the-art parsers and formatters ([some](https://arxiv.org/abs/2101.11408) [literature](https://dl.acm.org/doi/10.1145/3192366.3192369))
 - Optional multithreading and NVIDIA GPU support with automatic batching
 - Full data and settings verification
-- Autovectorisation through LLVM and rustc
+- Vectorization through LLVM and rustc
 - Insane runtime performance (see benchmarks)
 
 Prebuilt binaries are available under the [releases](https://github.com/PvdBerg1998/hfml_data_preprocessor/releases) section. Please check the [changelog](https://github.com/PvdBerg1998/hfml_data_preprocessor/blob/master/CHANGELOG.md) before updating.
@@ -23,7 +23,7 @@ Each step is fully controlled using a settings template (more information furthe
 - Header renaming
 - Domain trimming
 - Bad data masking
-- Premultiplication of x/y
+- Pre-multiplication of x/y
 - Tuneable impulse filtering for "popcorn noise" removal
 - Element-wise x inversion (e.g. for 1/B periodic processes)
 
@@ -47,9 +47,9 @@ This tool was developed with three core ideas in mind:
 - Reliability
 - Performance
 
-Having a highly performant tool allows you to focus on the data. It allows you to tweak the settings in real time, iterating and fine tuning your analysis.
+Having a highly performant tool allows you to focus on the data. It allows you to tweak the settings in real time, iterating and fine-tuning your analysis.
 
-To make the performance claim more quantitative, benchmark results are the best. For this measurement, I ran a full analysis using version `2.0.0` on 5 datasets. The data consists of 211 files for a total of 170 MB of raw data and should correspond to your average "big data analysis project". The test system was running Manjaro and consists of an Intel i5 6600K @ 4.4GHz, 16GB DDR4, GTX 1070, Samsung 980 Pro.
+To make the performance claim more quantitative, benchmark results are the best. For this measurement, I ran a full analysis using version `2.0.0` on 5 datasets. The data consists of 211 files for a total of 170 MB of raw data and should correspond to your average "big data analysis project". The test system was running Manjaro and consists of an Intel i5 6600K @ 4.4GHz, 16 GB DDR4, GTX 1070, Samsung 980 Pro.
 
 ```
 - 1 core   GPU disabled  : 44 sec (1.0x)
@@ -58,7 +58,7 @@ To make the performance claim more quantitative, benchmark results are the best.
 - 4 cores  GPU enabled   :  6 sec (7.3x)
 ```
 
-These numbers vary strongly depending on your analysis parameters. For extreme settings, multithreading and GPU FFT will provide larger benefits. For FFT heavy workloads, such as the FTFT with multiple files, the difference in performance is like night and day. Just a single template, executing a FTFT of 20 intervals on 8 files with 5 xy pairs each results in the following data:
+These numbers vary strongly depending on your analysis parameters. For extreme settings, multithreading and GPU FFT will provide larger benefits. For FFT heavy workloads, such as the FTFT with multiple files, the difference in performance is like night and day. Just a single template, executing a FTFT of 20 intervals on 8 files with 5 x/y pairs each results in the following data:
 
 ```
 - 1 core   GPU disabled  : 83.0 sec ( 1.0x)
@@ -71,7 +71,7 @@ One can understand that running this template for multiple samples in a dataset 
 
 # Usage
 ## Settings format
-The tool can be used by specifying required and optional settings via a copy of the `Settings.toml` file. The file format is called [TOML](https://toml.io/en/). The format allows for specialisation of settings at each of the following levels:
+The tool can be used by specifying required and optional settings via a copy of the `Settings.toml` file. The file format is called [TOML](https://toml.io/en/). The format allows for specialization of settings at each of the following levels:
 - Global
 - Per variable
 - Per file
@@ -79,7 +79,7 @@ The tool can be used by specifying required and optional settings via a copy of 
 
 The `Settings.toml` template contains documentation explaining all possible options and details.
 
-**Note that while most settings are checked for validity, it is currently not feasible to check specialisation targets.** This means that you should take care when changing your output destinations if you are using specialisations.
+**Note that while most settings are checked for validity, it is currently not feasible to check specialization targets.** This means that you should take care when changing your output destinations if you are using specializations.
 
 ## Running
 The tool is compiled to machine code from source, unlike Python scripts. This allows for much better runtime performance as it runs directly on your hardware, but complicates the installation a bit because a binary may not necessarily be compatible with your hardware. If one has already obtained a compatible compiled binary, usage is simple:
@@ -94,17 +94,17 @@ Further settings are documented through the runtime help option:
 
 However, these flags are not necessary for common use.
 
-When compiled with [NVIDIA CUDA](https://developer.nvidia.com/cufft) support, the proprietary runtime libraries must be reachable on your device. **If you do not provide the required libraries, the tool will not start and will most likely crash without an error message.** If you do not wish to make use of GPU FFTs, this requirement can be relaxed by providing a compilation flag (see the section on compilation).
+When compiled with [NVIDIA CUDA](https://developer.nvidia.com/cufft) support, the proprietary runtime libraries must be reachable on your device. **If you do not provide the required libraries, the tool will not start and will most likely crash without an error message.** If you do not wish to make use of GPU FFT's, this requirement can be relaxed by providing a compilation flag (see the section on compilation).
 
 ## Output structure
 
 The tool outputs several folders and files, depending on the analysis you have defined in the settings template. This can include:
 - Data output at each intermediate step in either CSV or [MessagePack](https://msgpack.org/index.html) binary format
 - Quick 'n dirty plotting for manual inspection without external tools
-- Detailed metadata stored as JSON for easy scripted postprocessing
+- Detailed metadata stored as JSON for easy scripted post-processing
 - Full "trace-level" log files for debugging and manual checks
 
-The MessagePack format is recommended if you will postprocess the data in another programming language such as Python. This binary format skips converting the floating point data back and forth to a base 10 representation. For usage in Python, I recommend [ormsgpack](https://pypi.org/project/ormsgpack/) to decode the data.
+The MessagePack format is recommended if you will post-process the data in another programming language such as Python. This binary format skips converting the floating point data back and forth to a base 10 representation. For usage in Python, I recommend [ormsgpack](https://pypi.org/project/ormsgpack/) to decode the data.
 
 Your typical project folder will look something like this:
 
@@ -131,7 +131,7 @@ Your typical project folder will look something like this:
 The data is processed as follows and in the following order:
 - `unprocessed`: no processing is applied at all.
 - `raw`: only sorted and deduplicated, such that the x data is monotonically increasing. This is often required for filtering algorithms. All steps after this will stay monotonic.
-- `preprocessed`: after masking, filtering, premultiplication. Essentially the full preprocessing machinery except x inversion, as this makes visual comparison with the raw data near impossible.
+- `preprocessed`: after masking, filtering, pre-multiplication. Essentially the full preprocessing machinery except x inversion, as this makes visual comparison with the raw data near impossible.
 - `inverted`: see `preprocessed`, but after x inversion.
 - `processed`: after interpolation and derivative. For performance and simplicity, these two steps are implemented as a single mathematical operation. **Linear interpolation therefore defines the second derivative to be zero everywhere.**
 - `fft`: after the Fast Fourier Transform (full domain).
@@ -141,7 +141,7 @@ Some folders or files may not be generated if you have disabled the correspondin
 
 ---
 
-**You should not manually access these generated files.** Information about the generated file structure is stored in `metadata.json` in `json` format. This is meant to simplify further postprocessing by providing information about every generated file. Instead of manually extracting files, it should be done by making use of this metadata and an additional postprocessing script. For this reason, additional measurement metadata ("tags") can be defined in `Settings.toml` per file.
+**You should not manually access these generated files.** Information about the generated file structure is stored in `metadata.json` in `json` format. This is meant to simplify further post-processing by providing information about every generated file. Instead of manually extracting files, it should be done by making use of this metadata and an additional post-processing script. For this reason, additional measurement metadata ("tags") can be defined in `Settings.toml` per file.
 The amount of information in the `metadata.json` includes:
 - A list of all variables
 - A sorted set of all user defined tags
@@ -155,9 +155,9 @@ The sorting applied to the user tags is using "natural human ordering", not the 
 
 **The direct usage of floating point tags is strongly discouraged! Using them as a key to a dictionary is unreliable due to the fundamental precision errors. Floats are not real numbers and therefore some values cannot be represented exactly.**
 
-## Example postprocessing script
+## Example post-processing script
 
-Imagine you want to plot the FFTs for each extracted variable measured at an angle of zero degrees. Simply load the `metadata.json` and filter it appropriately:
+Imagine you want to plot the FFT's for each extracted variable measured at an angle of zero degrees. Simply load the `metadata.json` and filter it appropriately:
 
 ```python
 import os
@@ -195,7 +195,7 @@ def metadata(project):
 def output_seq(project):
     return seq(metadata(project)["output"])
 
-# Select only the FFTs with tag angle=0,
+# Select only the FFT's with tag angle=0,
 # then load the data bundled with the variable name.
 data = output_seq("MyProject")\
     .filter(lambda out: out["stage"] == "fft")\
@@ -214,7 +214,7 @@ The tool is written in the Rust programming language. A working Rust compiler is
 - [GNU Scientific Library](https://www.gnu.org/software/gsl/) (GSL) for general purpose math. This is bundled and compiled using a C/C++ compiler automatically.
 - [CUDA toolkit](https://developer.nvidia.com/cufft) for GPU FFT acceleration. This is proprietary and therefore must be installed manually.
 
-Linux package managers make the compilation almost trivial and it is therefore recommended to use a Linux installation instead of Windows.
+Linux package managers make the compilation almost trivial, and it is therefore recommended to use a Linux installation instead of Windows.
 
 ### Ubuntu
 Required:
@@ -238,10 +238,10 @@ Optional CUDA support:
 sudo pacman -S pkg-config cuda
 ```
 
-The installation location of the CUDA libraries is determined through `pkg-config`. If this fails, the location is guessed to be `/usr/local/cuda`. After installation you can proceed to install Rust and Cargo following [these steps](https://www.rust-lang.org/tools/install). 
+The installation location of the CUDA libraries is determined through `pkg-config`. If this fails, the location is guessed to be `/usr/local/cuda`. After installation, you can proceed to install Rust and Cargo following [these steps](https://www.rust-lang.org/tools/install). 
 
 ### Windows
-It is recommended to install the MSVC flavour of Rust tooling. This does NOT require a full installation of Visual Studio. Windows uses a global "path" to find installed libraries. **If an installer presents the option to add itself to the path, you should enable it unless you want to add all paths manually afterwards.** Without proper setup on your path, the tools are not able to find eachother on your system. This will result in a compilation error about missing files or tools.
+It is recommended to install the MSVC flavor of Rust tooling. This does NOT require a full installation of Visual Studio. Windows uses a global "path" to find installed libraries. **If an installer presents the option to add itself to the path, you should enable it unless you want to add all paths manually afterwards.** Without proper setup on your path, the tools are not able to find each other on your system. This will result in a compilation error about missing files or tools.
 
 Install the following tools in order:
 - [MSVC Build tools](https://visualstudio.microsoft.com/downloads/?q=build+tools) under "Tools for Visual Studio". Currently, the latest version is located [here](https://aka.ms/vs/17/release/vs_BuildTools.exe).
@@ -252,7 +252,7 @@ Install the following tools in order:
 
 Note that Windows 10 and Windows 11 support an embedded Linux installation named [WSL](https://docs.microsoft.com/en-us/windows/wsl/install). This provides the convenience of Linux without requiring a separate bootable installation. Running through WSL may require [additional steps](https://docs.nvidia.com/cuda/wsl-user-guide/index.html) to provide GPU support.
 
-## Optional: CPU specific optimisations
+## Optional: CPU specific optimizations
 Enabling these settings allows the Rust compiler to optimize specifically for your CPU. This includes generating SIMD instructions, see for example [AVX](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions). This may improve performance, but the generated binary may not run on all your devices if those do not have the same capabilities. However, this risk is fairly low nowadays as most of these extensions are common in modern CPUs. It is therefore recommended to enable them.
 
 Create a `config.toml` file at one of the locations listed [here](https://doc.rust-lang.org/cargo/reference/config.html). Add the following lines:
@@ -277,7 +277,7 @@ cd hfml_data_preprocessor
 cargo build --release --locked
 ```
 
-If no NVIDIA hardware is present or if you do not manage to perform the installation, a compiletime flag can be set to disable GPU capability:
+If no NVIDIA hardware is present or if you do not manage to perform the installation, a compile-time flag can be set to disable GPU capability:
 
 ```shell
 cargo build --release --locked --no-default-features
@@ -297,13 +297,15 @@ To report the error, please go through the following steps:
 - Run the program with `RUST_BACKTRACE=1` ([tutorial for Windows](https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/set_1)) and provide the backtrace
 - Provide the log file, data and template to reproduce the issue
 
+Please check the [known issues](https://github.com/PvdBerg1998/hfml_data_preprocessor/blob/master/KNOWN_ISSUES.md) as well.
+
 # Licensing
 This repository is licensed under the GNU General Public License version 3. This is required because the tool uses the GNU Scientific Library and makes sure everyone has free access to this source code. If you use this tool for publication, a reference to this repository would be appreciated.
 
 # Known limitations
 - Other filtering methods such as Savitzky-Golay are missing
-    - Most commonly required for visualisation, can easily be handled during postprocessing with e.g. SciPy.
+    - Most commonly required for visualization, can easily be handled during post-processing with e.g. SciPy.
 - No support for AMD GPU's
     - Could be implemented via OpenCL or VkFFT
-- No check for wrong specialisation targets
+- No check for wrong specialization targets
     - No method known to do this without writing a full TOML parser
