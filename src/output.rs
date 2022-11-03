@@ -196,7 +196,7 @@ pub fn store_plot<P: AsRef<Path>>(
 
     chart.draw_series(LineSeries::new(
         x.iter().copied().zip(y.iter().copied()),
-        &RED,
+        RED,
     ))?;
 
     root.present()?;
@@ -205,7 +205,7 @@ pub fn store_plot<P: AsRef<Path>>(
 }
 
 #[must_use]
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct SaveRecord {
     format: Format,
     stage: String,

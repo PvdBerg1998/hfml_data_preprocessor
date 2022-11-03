@@ -462,7 +462,7 @@ fn deserialize_impulse_tuning<'de, D: Deserializer<'de>>(de: D) -> Result<f64, D
     Ok(tuning)
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Processing {
     #[serde(default)]
     pub interpolation: Option<InterpolationAlgorithm>,
@@ -686,11 +686,9 @@ fn parse_log2(n: &str) -> Result<u32, String> {
     if let Some(stripped) = n.strip_prefix("2^") {
         match stripped.parse::<u32>() {
             Ok(n_log2) => Ok(n_log2),
-            Err(_) => {
-                return Err(format!("Invalid power of 2: {n}"));
-            }
+            Err(_) => Err(format!("Invalid power of 2: {n}")),
         }
     } else {
-        return Err(format!("Invalid value: {n}"));
+        Err(format!("Invalid value: {n}"))
     }
 }

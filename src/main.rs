@@ -179,7 +179,7 @@ fn _main() -> Result<()> {
                 );
 
                 trace!("Renaming column {from} to {to}");
-                data.rename_column(&*from, &*to);
+                data.rename_column(from, to);
             }
             trace!("Columns (after replacing): {:#?}", data.columns());
 

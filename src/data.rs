@@ -24,6 +24,7 @@ use anyhow::Result;
 use gsl_rust::filter;
 use gsl_rust::sorting;
 use smallvec::SmallVec;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
@@ -70,14 +71,16 @@ impl FromStr for Data {
             .collect::<Vec<SmallVec<[&str; HEADER_GUESS]>>>();
 
         for (i, line) in data.iter().enumerate() {
-            if line.len() < headers.len() {
-                bail!("missing column at line {i}");
-            } else if line.len() > headers.len() {
-                if i == 0 {
-                    bail!("missing header(s)");
-                } else {
-                    bail!("missing header(s) or extra column(s) at line {i}");
+            match line.len().cmp(&headers.len()) {
+                Ordering::Less => bail!("missing column at line {i}"),
+                Ordering::Greater => {
+                    if i == 0 {
+                        bail!("missing header(s)");
+                    } else {
+                        bail!("missing header(s) or extra column(s) at line {i}");
+                    }
                 }
+                Ordering::Equal => {}
             }
         }
 
