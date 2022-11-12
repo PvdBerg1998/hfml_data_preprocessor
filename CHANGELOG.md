@@ -1,13 +1,17 @@
 # Changelog
 Version `2.0.0` is considered as the first "ready for use" release and changes before this point are not documented.
 
+# `2.2.0`
+### Changed
+- Headers in input files are now split by tabs instead of any whitespace
+
 # `2.1.9`
 ### Fixed
 - Crash when using the "very verbose" flag, i.e. `-vv`.
 
 # `2.1.8`
 ### Changed
-- The preliminary plots now use both the column name as well as the variable name in the y label.
+- The preliminary plots now use both the column name and the variable name in the y label.
 
 # `2.1.7`
 ### Added

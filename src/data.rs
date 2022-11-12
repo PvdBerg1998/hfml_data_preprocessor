@@ -23,6 +23,7 @@ use anyhow::Error;
 use anyhow::Result;
 use gsl_rust::filter;
 use gsl_rust::sorting;
+use itertools::Itertools;
 use smallvec::SmallVec;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -49,7 +50,11 @@ impl FromStr for Data {
             header_lines += 1;
 
             // Check if line contains only non-numerical values
-            let split = line.trim().split_ascii_whitespace().collect::<Vec<_>>();
+            let split = line
+                .trim()
+                .split('\t')
+                .filter(|header| !header.trim().is_empty())
+                .collect::<Vec<_>>();
             if split
                 .iter()
                 .all(|&entry| fast_float::parse::<f64, _>(entry).is_err())
@@ -62,7 +67,11 @@ impl FromStr for Data {
         let headers = headers;
         let header_lines = header_lines;
 
-        ensure!(!has_dup(&headers), "header contains duplicate values");
+        ensure!(
+            !has_dup(&headers),
+            "header contains duplicate values: {:?}",
+            headers.iter().duplicates().collect::<Vec<_>>()
+        );
 
         let data = s
             .lines()
