@@ -1,6 +1,10 @@
 # Changelog
 Version `2.0.0` is considered as the first "ready for use" release and changes before this point are not documented.
 
+# `2.1.9`
+### Fixed
+- Crash when using the "very verbose" flag, i.e. `-vv`.
+
 # `2.1.8`
 ### Changed
 - The preliminary plots now use both the column name as well as the variable name in the y label.

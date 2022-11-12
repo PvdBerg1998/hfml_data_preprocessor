@@ -690,7 +690,7 @@ pub fn has_dup<T: PartialEq>(slice: &[T]) -> bool {
 struct Args {
     template: PathBuf,
     #[clap(short, long, action = ArgAction::Count)]
-    verbose: usize,
+    verbose: u8,
     #[clap(short, long)]
     quiet: bool,
     #[clap(long)]
