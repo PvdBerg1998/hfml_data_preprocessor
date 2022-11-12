@@ -53,7 +53,8 @@ impl FromStr for Data {
             let split = line
                 .trim()
                 .split('\t')
-                .filter(|header| !header.trim().is_empty())
+                .map(|header| header.trim())
+                .filter(|header| !header.is_empty())
                 .collect::<Vec<_>>();
             if split
                 .iter()
